@@ -44,25 +44,28 @@ class LLMOrderParser:
     def parse_order(self, text: str) -> LLMParseResult:
         if not self.settings.llm_api_key:
             return self._fallback_parse(text)
-        client = OpenAI(
-            api_key=self.settings.llm_api_key,
-            base_url=self.settings.llm_base_url or None,
-        )
-        prompt = self._build_prompt(text)
-        response = client.chat.completions.create(
-            model=self.settings.llm_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "你是订单解析器，只输出严格 JSON，不要额外文本。",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
-        content = response.choices[0].message.content or "{}"
-        return LLMParseResult.model_validate(json.loads(content))
+        try:
+            client = OpenAI(
+                api_key=self.settings.llm_api_key,
+                base_url=self.settings.llm_base_url or None,
+            )
+            prompt = self._build_prompt(text)
+            response = client.chat.completions.create(
+                model=self.settings.llm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是订单解析器，只输出严格 JSON，不要额外文本。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+            )
+            content = response.choices[0].message.content or "{}"
+            return LLMParseResult.model_validate(json.loads(content))
+        except Exception:
+            return self._fallback_parse(text)
 
     def _build_prompt(self, text: str) -> str:
         schema = {
