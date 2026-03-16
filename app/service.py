@@ -13,6 +13,7 @@ from app.schemas import (
     ParsedRecipient,
     ProductCatalogItem,
     RecipientBatchUpsertRequest,
+    RecipientImportPreviewResponse,
     RecipientImportImageResponse,
     RecipientItem,
     RecipientUpsertRequest,
@@ -157,6 +158,12 @@ class OrderParseService:
         return RecipientImportImageResponse(
             imported_count=imported_count,
             recipients=[RecipientItem.model_validate(row) for row in imported_rows],
+        )
+
+    def preview_recipients_from_image(self, image_bytes: bytes, mime_type: str) -> RecipientImportPreviewResponse:
+        parsed = self.parser.parse_recipients_from_image(image_bytes=image_bytes, mime_type=mime_type)
+        return RecipientImportPreviewResponse(
+            recipients=[RecipientUpsertRequest.model_validate(item) for item in parsed],
         )
 
     def list_orders(self) -> list[OrderView]:

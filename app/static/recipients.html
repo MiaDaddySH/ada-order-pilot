@@ -39,8 +39,10 @@
             <input id="recipientImage" type="file" accept="image/*" />
             <div class="actions" style="margin-top:8px">
               <button class="secondary" id="batchImportBtn">导入文本</button>
-              <button class="secondary" id="imageImportBtn">导入图片</button>
+              <button class="secondary" id="imagePreviewBtn">图片识别预览</button>
+              <button class="secondary" id="imageImportBtn">确认导入预览</button>
             </div>
+            <pre id="previewOutput" style="margin-top:8px;max-height:180px;overflow:auto">[]</pre>
           </div>
         </div>
         <p class="hint" id="statusText">未选择记录</p>
@@ -64,6 +66,7 @@
       let selectedId = null;
       let allRows = [];
       let page = 1;
+      let previewRecipients = [];
       function setStatus(text, isErr = false) {
         const el = document.getElementById("statusText");
         el.textContent = text;
@@ -198,6 +201,23 @@
         }
       };
       document.getElementById("imageImportBtn").onclick = async () => {
+        if (!previewRecipients.length) return setStatus("请先执行图片识别预览", true);
+        if (!window.confirm(`确认导入预览到的 ${previewRecipients.length} 条收件人吗？`)) return;
+        try {
+          const res = await fetch("/api/v1/recipients/batch-upsert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recipients: previewRecipients }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          await loadData();
+          setStatus(`图片预览导入成功，共 ${data.imported_count} 条`);
+        } catch (e) {
+          setStatus(String(e), true);
+        }
+      };
+      document.getElementById("imagePreviewBtn").onclick = async () => {
         try {
           const fileInput = document.getElementById("recipientImage");
           const file = fileInput.files && fileInput.files[0];
@@ -216,15 +236,16 @@
             reader.onerror = () => reject(new Error("图片读取失败"));
             reader.readAsDataURL(file);
           });
-          const res = await fetch("/api/v1/recipients/import-image", {
+          const res = await fetch("/api/v1/recipients/parse-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image_base64: imageBase64, mime_type: file.type || "image/png" }),
           });
           if (!res.ok) throw new Error(await res.text());
           const data = await res.json();
-          await loadData();
-          setStatus(`图片导入成功，共 ${data.imported_count} 条`);
+          previewRecipients = data.recipients || [];
+          document.getElementById("previewOutput").textContent = JSON.stringify(previewRecipients, null, 2);
+          setStatus(`图片识别完成，共 ${previewRecipients.length} 条，请确认后导入`);
         } catch (e) {
           setStatus(String(e), true);
         }

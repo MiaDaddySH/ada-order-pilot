@@ -90,6 +90,10 @@ class RecipientImportImageResponse(BaseModel):
     recipients: list[RecipientItem]
 
 
+class RecipientImportPreviewResponse(BaseModel):
+    recipients: list[RecipientUpsertRequest]
+
+
 class OrderItemPayload(BaseModel):
     simple_code: str = Field(min_length=1, max_length=64)
     brand: str | None = None

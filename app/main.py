@@ -17,6 +17,7 @@ from app.schemas import (
     ParseOrderResponse,
     ProductCatalogItem,
     RecipientBatchUpsertRequest,
+    RecipientImportPreviewResponse,
     RecipientImportImageRequest,
     RecipientImportImageResponse,
     RecipientItem,
@@ -153,6 +154,21 @@ def import_recipients_by_image(payload: RecipientImportImageRequest) -> Recipien
     service = OrderParseService()
     try:
         return service.import_recipients_from_image(image_bytes=content, mime_type=payload.mime_type)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/recipients/parse-image", response_model=RecipientImportPreviewResponse)
+def parse_recipients_by_image(payload: RecipientImportImageRequest) -> RecipientImportPreviewResponse:
+    if not payload.mime_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="仅支持图片文件")
+    try:
+        content = base64.b64decode(payload.image_base64)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="图片base64格式不正确") from exc
+    service = OrderParseService()
+    try:
+        return service.preview_recipients_from_image(image_bytes=content, mime_type=payload.mime_type)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

@@ -32,6 +32,11 @@ def test_parse_order_input_llm_only_without_key_returns_503(tmp_path: Path) -> N
         json={"image_base64": "aGVsbG8gd29ybGQ=", "mime_type": "image/png"},
     )
     assert image_resp.status_code == 503
+    preview_resp = client.post(
+        "/api/v1/recipients/parse-image",
+        json={"image_base64": "aGVsbG8gd29ybGQ=", "mime_type": "image/png"},
+    )
+    assert preview_resp.status_code == 503
     os.environ["PARSE_MODE"] = "fallback"
 
 
