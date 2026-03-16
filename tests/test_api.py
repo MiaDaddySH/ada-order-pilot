@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -10,7 +13,8 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_parse_order_input() -> None:
+def test_parse_order_input(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_parse.db"
     client = TestClient(app)
     payload = {
         "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（Holle 羊2段4盒）"
@@ -21,3 +25,20 @@ def test_parse_order_input() -> None:
     assert "recipient" in body
     assert "products" in body
     assert isinstance(body["products"], list)
+
+
+def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_order.db"
+    client = TestClient(app)
+    payload = {
+        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（Holle 羊2段4盒）"
+    }
+    first = client.post("/api/v1/orders/from-input", json=payload)
+    second = client.post("/api/v1/orders/from-input", json=payload)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["order_created"] is True
+    assert second_body["order_created"] is False
+    assert first_body["order_no"] == second_body["order_no"]
