@@ -104,6 +104,7 @@
           <button id="createOrderBtn">创建订单</button>
         </div>
         <p class="hint" id="parseSource">解析来源：-</p>
+        <p class="hint" id="recipientMatchInfo">收件人命中：-</p>
         <p class="hint">创建订单要求商品能匹配简易代码。</p>
         <pre id="parseOutput">{}</pre>
       </div>
@@ -156,6 +157,7 @@
     <script>
       const parseOutput = document.getElementById("parseOutput");
       const parseSource = document.getElementById("parseSource");
+      const recipientMatchInfo = document.getElementById("recipientMatchInfo");
       const productsOutput = document.getElementById("productsOutput");
 
       function pretty(data) {
@@ -188,9 +190,11 @@
           });
           parseOutput.textContent = pretty(data);
           parseSource.textContent = `解析来源：${data.parse_source || "-"}`;
+          recipientMatchInfo.textContent = "收件人命中：-";
         } catch (e) {
           parseOutput.textContent = String(e);
           parseSource.textContent = "解析来源：-";
+          recipientMatchInfo.textContent = "收件人命中：-";
         }
       };
 
@@ -205,12 +209,20 @@
           parseOutput.textContent = pretty(data);
           const source = data.parse_result?.parse_source || "-";
           parseSource.textContent = `解析来源：${source}`;
+          const match = data.recipient_match;
+          if (match && match.matched_recipient_id) {
+            const reasons = Array.isArray(match.reasons) ? match.reasons.join("、") : "";
+            recipientMatchInfo.textContent = `收件人命中：ID=${match.matched_recipient_id}，姓名=${match.matched_name || "-"}，评分=${match.score || 0}${reasons ? `，依据=${reasons}` : ""}`;
+          } else {
+            recipientMatchInfo.textContent = "收件人命中：未命中历史收件人";
+          }
         } catch (e) {
           parseOutput.textContent = String(e);
           if (String(e).includes("收件人信息不完整")) {
             window.alert(String(e));
           }
           parseSource.textContent = "解析来源：-";
+          recipientMatchInfo.textContent = "收件人命中：-";
         }
       };
 

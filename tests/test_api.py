@@ -192,6 +192,8 @@ def test_create_order_from_input_reuses_recipient_by_name(tmp_path: Path) -> Non
     assert body["parse_result"]["recipient"]["name"] == "朱娜"
     assert body["parse_result"]["recipient"]["phone"] == "13812345678"
     assert body["parse_result"]["recipient"]["id_card_no"] == "320623198104030043"
+    assert body["recipient_match"]["matched_recipient_id"] >= 1
+    assert body["recipient_match"]["matched_name"] == "朱娜"
 
 
 def test_create_order_from_input_reuses_recipient_for_short_text_name(tmp_path: Path) -> None:
@@ -219,6 +221,7 @@ def test_create_order_from_input_reuses_recipient_for_short_text_name(tmp_path: 
     assert body["recipient_created"] is False
     assert body["parse_result"]["recipient"]["name"] == "朱娜"
     assert body["parse_result"]["recipient"]["id_card_no"] == "320623198104030043"
+    assert body["recipient_match"]["matched_name"] == "朱娜"
 
 
 def test_create_order_from_input_matches_same_name_by_last4_and_address(tmp_path: Path) -> None:
@@ -261,6 +264,8 @@ def test_create_order_from_input_matches_same_name_by_last4_and_address(tmp_path
     assert body["parse_result"]["recipient"]["phone"] == "13812349999"
     assert body["parse_result"]["recipient"]["district"] == "天河区"
     assert "天誉花园" in body["parse_result"]["recipient"]["address_detail"]
+    assert body["recipient_match"]["matched_name"] == "朱娜"
+    assert body["recipient_match"]["score"] >= 1
 
 
 def test_create_order_from_input_reports_missing_recipient_fields(tmp_path: Path) -> None:

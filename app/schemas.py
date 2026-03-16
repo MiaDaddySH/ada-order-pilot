@@ -42,6 +42,7 @@ class CreateOrderFromInputResponse(BaseModel):
     recipient_id: int
     recipient_created: bool
     parse_result: ParseOrderResponse
+    recipient_match: dict[str, object] | None = None
 
 
 class ProductCatalogItem(BaseModel):
