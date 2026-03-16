@@ -112,8 +112,7 @@
         </div>
         <div class="actions">
           <button class="secondary" id="exportRecipientsBtn">导出收件人模板</button>
-          <button class="secondary" id="exportOrdersBtn">导出订单数据</button>
-          <button class="secondary" id="exportOrdersTemplateBtn">导出订单模板</button>
+          <button class="secondary" id="exportOrdersBtn">导出订单</button>
         </div>
       </div>
 
@@ -212,20 +211,6 @@
         }
         const suffix = query.toString() ? `?${query.toString()}` : "";
         window.open(`/api/v1/export/orders${suffix}`, "_blank");
-      };
-
-      document.getElementById("exportOrdersTemplateBtn").onclick = () => {
-        const recentDays = document.getElementById("recentDays").value.trim();
-        const orderLimit = document.getElementById("orderLimit").value.trim();
-        const query = new URLSearchParams();
-        if (recentDays) {
-          query.set("recent_days", recentDays);
-        }
-        if (orderLimit) {
-          query.set("limit", orderLimit);
-        }
-        const suffix = query.toString() ? `?${query.toString()}` : "";
-        window.open(`/api/v1/export/orders-template${suffix}`, "_blank");
       };
 
       async function refreshProducts() {

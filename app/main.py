@@ -96,5 +96,5 @@ def export_orders(
     limit: int | None = None,
 ) -> FileResponse:
     service = OrderParseService()
-    path = service.export_orders_data(status=status, recent_days=recent_days, limit=limit)
+    path = service.export_orders_template(status=status, recent_days=recent_days, limit=limit)
     return FileResponse(path=path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
