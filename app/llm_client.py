@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
+    db_path: str = "data/ada_order.db"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
