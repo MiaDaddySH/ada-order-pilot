@@ -94,11 +94,12 @@ class OrderParseService:
             lookup_names.append(extracted_name)
         if not lookup_names:
             return
-        existing = None
+        existing: dict[str, object] | None = None
         matched_name = ""
         for candidate in lookup_names:
-            existing = self.repository.find_recipient_by_name(candidate)
-            if existing is not None:
+            candidates = self.repository.find_recipients_by_name(candidate)
+            if candidates:
+                existing = self._choose_best_recipient_candidate(candidates, parsed, input_text)
                 matched_name = candidate
                 break
         if existing is None:
@@ -122,6 +123,58 @@ class OrderParseService:
             parsed.recipient.postcode = (str(existing.get("postcode") or "").strip() or None)
         if not parsed.recipient.id_card_no:
             parsed.recipient.id_card_no = (str(existing.get("id_card_no") or "").strip() or None)
+
+    def _choose_best_recipient_candidate(
+        self,
+        candidates: list[dict[str, object]],
+        parsed: ParseOrderResponse,
+        input_text: str,
+    ) -> dict[str, object]:
+        best = candidates[0]
+        best_score = self._recipient_match_score(best, parsed, input_text)
+        for candidate in candidates[1:]:
+            score = self._recipient_match_score(candidate, parsed, input_text)
+            if score > best_score:
+                best = candidate
+                best_score = score
+        return best
+
+    def _recipient_match_score(
+        self,
+        candidate: dict[str, object],
+        parsed: ParseOrderResponse,
+        input_text: str,
+    ) -> int:
+        score = 0
+        source = input_text.strip()
+        phone = str(candidate.get("phone") or "").strip()
+        if phone and phone in source:
+            score += 10
+        if phone and len(phone) >= 4 and phone[-4:] in source:
+            score += 4
+        id_card_no = str(candidate.get("id_card_no") or "").strip()
+        if id_card_no and id_card_no in source:
+            score += 8
+        for key in ("province", "city", "district"):
+            value = str(candidate.get(key) or "").strip()
+            if value and value in source:
+                score += 2
+        address_detail = str(candidate.get("address_detail") or "").strip()
+        if address_detail:
+            tokens = [t for t in re.split(r"[，,。；;、\s\-—（）()]+", address_detail) if len(t) >= 2]
+            for token in tokens[:6]:
+                if token in source:
+                    score += 1
+        parsed_phone = (parsed.recipient.phone or "").strip()
+        if parsed_phone and parsed_phone != "00000000000" and parsed_phone == phone:
+            score += 6
+        if parsed.recipient.province and parsed.recipient.province == str(candidate.get("province") or ""):
+            score += 2
+        if parsed.recipient.city and parsed.recipient.city == str(candidate.get("city") or ""):
+            score += 2
+        if parsed.recipient.district and parsed.recipient.district == str(candidate.get("district") or ""):
+            score += 2
+        return score
 
     def _extract_name_from_input(self, input_text: str) -> str | None:
         text = input_text.strip()

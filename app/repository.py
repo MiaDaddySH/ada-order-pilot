@@ -140,18 +140,23 @@ class OrderRepository:
             return True
 
     def find_recipient_by_name(self, name: str) -> dict[str, object] | None:
+        rows = self.find_recipients_by_name(name)
+        if not rows:
+            return None
+        return rows[0]
+
+    def find_recipients_by_name(self, name: str) -> list[dict[str, object]]:
         with get_connection(self.db_path) as connection:
-            row = connection.execute(
+            rows = connection.execute(
                 """
                 SELECT id, name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode
                 FROM recipients
                 WHERE name = ?
                 ORDER BY updated_at DESC, id DESC
-                LIMIT 1
                 """,
                 (name,),
-            ).fetchone()
-            return dict(row) if row is not None else None
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def batch_upsert_recipients(self, payloads: list[dict[str, Any]]) -> int:
         with get_connection(self.db_path) as connection:
