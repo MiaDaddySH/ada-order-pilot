@@ -29,3 +29,12 @@ class ParseOrderResponse(BaseModel):
     products: list[ParsedProduct]
     confidence: float = Field(ge=0, le=1)
     needs_review: bool
+
+
+class CreateOrderFromInputResponse(BaseModel):
+    order_no: str
+    order_status: str
+    order_created: bool
+    recipient_id: int
+    recipient_created: bool
+    parse_result: ParseOrderResponse
