@@ -34,16 +34,12 @@
           <input id="searchInput" placeholder="搜索：姓名/手机号/地址" style="max-width:260px" />
         </div>
         <div class="grid-2" style="margin-top:10px">
-          <textarea id="batchRecipients" placeholder="批量导入文本（每行：姓名,手机号,身份证号,省,市,区,详细地址,原始地址,邮编）"></textarea>
+          <textarea id="batchRecipients" placeholder="批量导入文本（支持两种格式：1）逗号行：姓名,手机号,身份证号,省,市,区,详细地址,原始地址,邮编；2）编号分行块：序号/姓名/手机号/中国/省市区/详细地址/身份证号）"></textarea>
           <div>
-            <input id="recipientImage" type="file" accept="image/*" />
             <div class="actions" style="margin-top:8px">
               <button class="secondary" id="batchImportBtn">导入文本</button>
-              <button class="secondary" id="imagePreviewBtn">图片识别预览</button>
-              <button class="secondary" id="imageImportBtn">确认导入预览</button>
             </div>
-            <pre id="previewOutput" style="margin-top:8px;max-height:180px;overflow:auto">[]</pre>
-            <p class="hint" id="imageLoadingHint" style="display:none">图片解析中</p>
+            <p class="hint" id="batchLoadingHint" style="display:none">文本导入中</p>
           </div>
         </div>
         <p class="hint" id="statusText">未选择记录</p>
@@ -51,7 +47,7 @@
       <div class="card">
         <table>
           <thead>
-            <tr><th>ID</th><th>姓名</th><th>手机号</th><th>省市区</th><th>详细地址</th><th>邮编</th></tr>
+            <tr><th>ID</th><th>姓名</th><th>手机号</th><th>身份证号</th><th>省市区</th><th>详细地址</th><th>邮编</th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
@@ -67,8 +63,7 @@
       let selectedId = null;
       let allRows = [];
       let page = 1;
-      let previewRecipients = [];
-      let loadingTimer = null;
+      let batchLoadingTimer = null;
       function setStatus(text, isErr = false) {
         const el = document.getElementById("statusText");
         el.textContent = text;
@@ -164,24 +159,22 @@
         if (commaParsed.length > 0) return commaParsed;
         return parseRecipientsFromBlocks(raw);
       }
-      function setImageLoading(loading) {
-        const previewBtn = document.getElementById("imagePreviewBtn");
-        const importBtn = document.getElementById("imageImportBtn");
-        const hint = document.getElementById("imageLoadingHint");
-        previewBtn.disabled = loading;
-        importBtn.disabled = loading;
+      function setBatchLoading(loading) {
+        const batchBtn = document.getElementById("batchImportBtn");
+        const hint = document.getElementById("batchLoadingHint");
+        batchBtn.disabled = loading;
         if (!loading) {
-          if (loadingTimer) clearInterval(loadingTimer);
-          loadingTimer = null;
+          if (batchLoadingTimer) clearInterval(batchLoadingTimer);
+          batchLoadingTimer = null;
           hint.style.display = "none";
-          hint.textContent = "图片解析中";
+          hint.textContent = "文本导入中";
           return;
         }
         hint.style.display = "block";
         let dots = 0;
-        loadingTimer = setInterval(() => {
+        batchLoadingTimer = setInterval(() => {
           dots = (dots + 1) % 4;
-          hint.textContent = `图片解析中${".".repeat(dots)}`;
+          hint.textContent = `文本导入中${".".repeat(dots)}`;
         }, 400);
       }
       function getPayload() {
@@ -230,7 +223,7 @@
         current.forEach((item) => {
           const tr = document.createElement("tr");
           if (selectedId === item.id) tr.classList.add("selected");
-          tr.innerHTML = `<td>${item.id}</td><td>${item.name}</td><td>${item.phone}</td><td>${item.province || ""}${item.city || ""}${item.district || ""}</td><td>${item.address_detail}</td><td>${item.postcode || ""}</td>`;
+          tr.innerHTML = `<td>${item.id}</td><td>${item.name}</td><td>${item.phone}</td><td>${item.id_card_no || ""}</td><td>${item.province || ""}${item.city || ""}${item.district || ""}</td><td>${item.address_detail}</td><td>${item.postcode || ""}</td>`;
           tr.onclick = () => {
             selectedId = item.id;
             fillForm(item);
@@ -280,6 +273,7 @@
       };
       document.getElementById("batchImportBtn").onclick = async () => {
         try {
+          setBatchLoading(true);
           const raw = document.getElementById("batchRecipients").value;
           const recipients = parseBatchRecipients(raw);
           if (!recipients.length) {
@@ -296,59 +290,8 @@
           setStatus(`文本导入成功，共 ${data.imported_count} 条`);
         } catch (e) {
           setStatus(String(e), true);
-        }
-      };
-      document.getElementById("imageImportBtn").onclick = async () => {
-        if (!previewRecipients.length) return setStatus("请先执行图片识别预览", true);
-        if (!window.confirm(`确认导入预览到的 ${previewRecipients.length} 条收件人吗？`)) return;
-        try {
-          const res = await fetch("/api/v1/recipients/batch-upsert", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ recipients: previewRecipients }),
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          await loadData();
-          setStatus(`图片预览导入成功，共 ${data.imported_count} 条`);
-        } catch (e) {
-          setStatus(String(e), true);
-        }
-      };
-      document.getElementById("imagePreviewBtn").onclick = async () => {
-        try {
-          setImageLoading(true);
-          const fileInput = document.getElementById("recipientImage");
-          const file = fileInput.files && fileInput.files[0];
-          if (!file) return setStatus("请先选择图片文件", true);
-          const imageBase64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const dataUrl = String(reader.result || "");
-              const parts = dataUrl.split(",");
-              if (parts.length < 2) {
-                reject(new Error("图片读取失败"));
-                return;
-              }
-              resolve(parts[1]);
-            };
-            reader.onerror = () => reject(new Error("图片读取失败"));
-            reader.readAsDataURL(file);
-          });
-          const res = await fetch("/api/v1/recipients/parse-image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image_base64: imageBase64, mime_type: file.type || "image/png" }),
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          previewRecipients = data.recipients || [];
-          document.getElementById("previewOutput").textContent = JSON.stringify(previewRecipients, null, 2);
-          setStatus(`图片识别完成，共 ${previewRecipients.length} 条，请确认后导入`);
-        } catch (e) {
-          setStatus(String(e), true);
         } finally {
-          setImageLoading(false);
+          setBatchLoading(false);
         }
       };
       loadData();
