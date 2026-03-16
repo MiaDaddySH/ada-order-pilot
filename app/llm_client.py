@@ -105,17 +105,21 @@ class LLMOrderParser:
         )
 
     def _fallback_parse(self, text: str) -> LLMParseResult:
+        normalized_text = text.replace("➕", "+").replace("＋", "+")
         cleaned_text = self._strip_product_segment(text)
         phone = self._extract_phone(cleaned_text)
         recipient_name = self._extract_name(cleaned_text, phone)
         address_source = self._extract_address_source(cleaned_text, phone)
         province, city, district, address_detail = self._split_address(address_source)
-        quantity_match = re.search(r"(\d+)\s*(盒|罐|袋|听)", text)
+        quantity_match = re.search(r"(\d+)\s*(盒|罐|袋|听)", normalized_text)
         quantity = int(quantity_match.group(1)) if quantity_match else 1
         unit = quantity_match.group(2) if quantity_match else "盒"
-        stage_match = re.search(r"(pre|PRE|\d+\+?段|\d+\+)", text)
+        stage_match = re.search(r"(pre|PRE|\d+\+?段|\d+\+)", normalized_text)
         stage = stage_match.group(1) if stage_match else None
-        simple_code_match = re.search(r"(?<![0-9A-Za-z])([A-Za-z]{1,6}\d\+?|[0-9]{10,})(?![0-9A-Za-z])", text)
+        simple_code_match = re.search(
+            r"(?<![0-9A-Za-z])([A-Za-z]{1,6}\d\+?|[0-9]{10,})(?![0-9A-Za-z])",
+            normalized_text,
+        )
         simple_code = simple_code_match.group(1) if simple_code_match else None
         return LLMParseResult(
             recipient={

@@ -747,6 +747,11 @@ class OrderRepository:
             normalized_stage = self._normalize(stage)
             if normalized_stage and normalized_stage in normalized_name:
                 score += 3
+        if "牛奶" in source:
+            if "羊奶" in normalized_name:
+                score -= 2
+            if "全脂" in normalized_name or "牛" in normalized_name:
+                score += 2
         if "羊" in source and "羊" in normalized_name:
             score += 1
         if "牛" in source and "牛" in normalized_name:
@@ -759,6 +764,7 @@ class OrderRepository:
             compact = compact.replace(alias, canonical)
         compact = compact.replace("（", "(").replace("）", ")")
         compact = compact.replace("＋", "+")
+        compact = compact.replace("➕", "+")
         compact = compact.replace("克", "g")
         compact = compact.replace("段", "段")
         return re.sub(r"[^0-9a-z\u4e00-\u9fff\+]+", "", compact)

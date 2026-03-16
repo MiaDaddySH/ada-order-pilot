@@ -69,6 +69,22 @@ def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
     assert body["products"][0]["quantity"] == 8
 
 
+def test_parse_order_input_with_plus_symbol_for_lewenzan(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_parse_plus.db"
+    os.environ["LLM_API_KEY"] = ""
+    os.environ["LLM_BASE_URL"] = ""
+    client = TestClient(app)
+    payload = {
+        "input_text": "直邮 8罐乐温赞 牛奶 6➕\n\n何建荣 电话15235223296\n地址：山西省大同市平城区绿地璀璨天城1号楼"
+    }
+    response = client.post("/api/v1/parse-order-input", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["products"][0]["simple_code"] == "42604770514247"
+    assert "乐温赞全脂婴幼儿奶粉6+400g罐" == body["products"][0]["product_name"]
+    assert body["products"][0]["quantity"] == 8
+
+
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_order.db"
     client = TestClient(app)
