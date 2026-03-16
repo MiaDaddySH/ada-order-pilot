@@ -101,8 +101,11 @@ class LLMOrderParser:
         )
 
     def _fallback_parse(self, text: str) -> LLMParseResult:
-        digits = "".join(ch for ch in text if ch.isdigit())
-        phone = digits[-11:] if len(digits) >= 11 else "00000000000"
+        cleaned_text = self._strip_product_segment(text)
+        phone = self._extract_phone(cleaned_text)
+        recipient_name = self._extract_name(cleaned_text, phone)
+        address_source = self._extract_address_source(cleaned_text, phone)
+        province, city, district, address_detail = self._split_address(address_source)
         quantity_match = re.search(r"(\d+)\s*(盒|罐|袋|听)", text)
         quantity = int(quantity_match.group(1)) if quantity_match else 1
         unit = quantity_match.group(2) if quantity_match else "盒"
@@ -112,13 +115,13 @@ class LLMOrderParser:
         simple_code = simple_code_match.group(1) if simple_code_match else None
         return LLMParseResult(
             recipient={
-                "name": "待确认",
+                "name": recipient_name,
                 "phone": phone,
-                "province": None,
-                "city": None,
-                "district": None,
-                "address_detail": text,
-                "raw_address": text,
+                "province": province,
+                "city": city,
+                "district": district,
+                "address_detail": address_detail,
+                "raw_address": address_source,
                 "postcode": None,
             },
             products=[
@@ -134,3 +137,61 @@ class LLMOrderParser:
             confidence=0.2,
             needs_review=True,
         )
+
+    def _strip_product_segment(self, text: str) -> str:
+        head = re.split(r"[（(]", text, maxsplit=1)[0]
+        return head.strip()
+
+    def _extract_phone(self, text: str) -> str:
+        matched = re.search(r"1[3-9]\d{9}", text)
+        if matched:
+            return matched.group(0)
+        digits = "".join(ch for ch in text if ch.isdigit())
+        return digits[-11:] if len(digits) >= 11 else "00000000000"
+
+    def _extract_name(self, text: str, phone: str) -> str:
+        without_phone = text.replace(phone, " ")
+        parts = [part.strip() for part in re.split(r"[，,;；]", without_phone) if part.strip()]
+        if len(parts) >= 2:
+            candidate = parts[-1]
+        else:
+            candidate = without_phone
+        matched = re.search(r"[\u4e00-\u9fff]{2,6}", candidate)
+        return matched.group(0) if matched else "待确认"
+
+    def _extract_address_source(self, text: str, phone: str) -> str:
+        without_phone = text.replace(phone, " ")
+        parts = [part.strip() for part in re.split(r"[，,;；]", without_phone) if part.strip()]
+        if parts:
+            return parts[0]
+        return without_phone.strip()
+
+    def _split_address(self, address: str) -> tuple[str | None, str | None, str | None, str]:
+        working = address.strip()
+        province = None
+        city = None
+        district = None
+
+        province_match = re.match(r"^(.+?(?:省|自治区|特别行政区|市))", working)
+        if province_match:
+            province = province_match.group(1)
+            working = working[len(province) :].strip()
+
+        city_match = re.match(r"^(.+?市)", working)
+        if city_match is None:
+            city_match = re.match(r"^(.+?(?:州|盟|地区))", working)
+        if city_match:
+            city = city_match.group(1)
+            working = working[len(city) :].strip()
+        elif province and province.endswith("市"):
+            city = province
+
+        district_match = re.match(r"^(.+?(?:区|县|旗))", working)
+        if district_match is None:
+            district_match = re.match(r"^(.+?市)", working)
+        if district_match:
+            district = district_match.group(1)
+            working = working[len(district) :].strip()
+
+        address_detail = working if working else address.strip()
+        return province, city, district, address_detail

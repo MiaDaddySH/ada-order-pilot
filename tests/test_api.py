@@ -24,6 +24,8 @@ def test_index_page() -> None:
 
 def test_parse_order_input(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_parse.db"
+    os.environ["LLM_API_KEY"] = ""
+    os.environ["LLM_BASE_URL"] = ""
     client = TestClient(app)
     payload = {
         "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（Holle 羊2段4盒）"
@@ -34,6 +36,10 @@ def test_parse_order_input(tmp_path: Path) -> None:
     assert "recipient" in body
     assert "products" in body
     assert isinstance(body["products"], list)
+    assert body["recipient"]["province"] == "广东省"
+    assert body["recipient"]["city"] == "广州市"
+    assert body["recipient"]["district"] == "花都区"
+    assert "庙南巷42号" in body["recipient"]["address_detail"]
 
 
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
