@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ADA 智能订单系统</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+        margin: 0;
+        background: #f6f8fb;
+        color: #1f2937;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1 {
+        margin: 0 0 16px;
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      textarea,
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 14px;
+      }
+      textarea {
+        min-height: 96px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      button {
+        border: none;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        padding: 9px 14px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #4b5563;
+      }
+      pre {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        padding: 12px;
+        overflow: auto;
+        min-height: 80px;
+      }
+      .hint {
+        color: #6b7280;
+        font-size: 13px;
+      }
+      @media (max-width: 800px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>ADA 智能订单系统</h1>
+
+      <div class="card">
+        <h2>文本解析与建单</h2>
+        <textarea id="inputText" placeholder="粘贴下单文本，例如：广东省...（HO2 4盒）"></textarea>
+        <div class="actions">
+          <button id="parseBtn">解析预览</button>
+          <button id="createOrderBtn">创建订单</button>
+        </div>
+        <p class="hint">创建订单要求商品能匹配简易代码。</p>
+        <pre id="parseOutput">{}</pre>
+      </div>
+
+      <div class="card">
+        <h2>模板导出</h2>
+        <div class="actions">
+          <button class="secondary" id="exportRecipientsBtn">导出收件人模板</button>
+          <button class="secondary" id="exportOrdersBtn">导出订单模板</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>商品管理</h2>
+        <div class="row">
+          <div>
+            <label>商品名称</label>
+            <input id="productName" placeholder="例如：Holle 有机婴幼儿牛奶粉2段600g" />
+          </div>
+          <div>
+            <label>简易代码</label>
+            <input id="productCode" placeholder="例如：HO2" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="addProductBtn">新增/更新商品</button>
+          <button class="secondary" id="refreshProductsBtn">刷新商品列表</button>
+        </div>
+        <div style="margin-top:12px">
+          <label>批量导入（每行：商品名称[TAB]简易代码）</label>
+          <textarea id="batchProducts"></textarea>
+          <div class="actions">
+            <button id="batchUpsertBtn">批量导入</button>
+          </div>
+        </div>
+        <pre id="productsOutput">[]</pre>
+      </div>
+    </div>
+
+    <script>
+      const parseOutput = document.getElementById("parseOutput");
+      const productsOutput = document.getElementById("productsOutput");
+
+      function pretty(data) {
+        return JSON.stringify(data, null, 2);
+      }
+
+      async function api(url, options) {
+        const response = await fetch(url, options);
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+          if (contentType.includes("application/json")) {
+            const err = await response.json();
+            throw new Error(pretty(err));
+          }
+          throw new Error(await response.text());
+        }
+        if (contentType.includes("application/json")) {
+          return response.json();
+        }
+        return response;
+      }
+
+      document.getElementById("parseBtn").onclick = async () => {
+        try {
+          const inputText = document.getElementById("inputText").value.trim();
+          const data = await api("/api/v1/parse-order-input", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input_text: inputText }),
+          });
+          parseOutput.textContent = pretty(data);
+        } catch (e) {
+          parseOutput.textContent = String(e);
+        }
+      };
+
+      document.getElementById("createOrderBtn").onclick = async () => {
+        try {
+          const inputText = document.getElementById("inputText").value.trim();
+          const data = await api("/api/v1/orders/from-input", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ input_text: inputText }),
+          });
+          parseOutput.textContent = pretty(data);
+        } catch (e) {
+          parseOutput.textContent = String(e);
+        }
+      };
+
+      document.getElementById("exportRecipientsBtn").onclick = () => {
+        window.open("/api/v1/export/recipients-template", "_blank");
+      };
+
+      document.getElementById("exportOrdersBtn").onclick = () => {
+        window.open("/api/v1/export/orders-template", "_blank");
+      };
+
+      async function refreshProducts() {
+        try {
+          const data = await api("/api/v1/products?include_inactive=true");
+          productsOutput.textContent = pretty(data);
+        } catch (e) {
+          productsOutput.textContent = String(e);
+        }
+      }
+
+      document.getElementById("refreshProductsBtn").onclick = refreshProducts;
+
+      document.getElementById("addProductBtn").onclick = async () => {
+        try {
+          const productName = document.getElementById("productName").value.trim();
+          const simpleCode = document.getElementById("productCode").value.trim();
+          const data = await api("/api/v1/products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ product_name: productName, simple_code: simpleCode }),
+          });
+          productsOutput.textContent = pretty(data);
+          await refreshProducts();
+        } catch (e) {
+          productsOutput.textContent = String(e);
+        }
+      };
+
+      document.getElementById("batchUpsertBtn").onclick = async () => {
+        try {
+          const raw = document.getElementById("batchProducts").value;
+          const products = raw
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+            .map((line) => {
+              const parts = line.split("\t");
+              return { product_name: (parts[0] || "").trim(), simple_code: (parts[1] || "").trim() };
+            })
+            .filter((item) => item.product_name && item.simple_code);
+          const data = await api("/api/v1/products/batch-upsert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ products }),
+          });
+          productsOutput.textContent = pretty(data);
+          await refreshProducts();
+        } catch (e) {
+          productsOutput.textContent = String(e);
+        }
+      };
+
+      refreshProducts();
+    </script>
+  </body>
+  </html>

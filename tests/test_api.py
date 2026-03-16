@@ -14,6 +14,14 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_index_page() -> None:
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "ADA 智能订单系统" in response.text
+
+
 def test_parse_order_input(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_parse.db"
     client = TestClient(app)

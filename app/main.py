@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
@@ -13,6 +15,12 @@ from app.schemas import (
 from app.service import OrderParseService
 
 app = FastAPI(title="ADA Order Pilot", version="0.1.0")
+INDEX_FILE = Path(__file__).parent / "static" / "index.html"
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(INDEX_FILE)
 
 
 @app.get("/health")
