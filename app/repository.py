@@ -282,12 +282,18 @@ class OrderRepository:
                 ORDER BY o.id DESC
                 """
             ).fetchall()
+            if not order_rows:
+                return []
+            order_ids = [int(row["id"]) for row in order_rows]
+            placeholders = ",".join("?" for _ in order_ids)
             item_rows = connection.execute(
-                """
+                f"""
                 SELECT id, order_id, simple_code, brand, product_name, stage, quantity, unit
                 FROM order_items
+                WHERE order_id IN ({placeholders})
                 ORDER BY id ASC
-                """
+                """,
+                order_ids,
             ).fetchall()
             items_by_order: dict[int, list[dict[str, object]]] = {}
             for row in item_rows:
@@ -322,6 +328,56 @@ class OrderRepository:
                     }
                 )
             return results
+
+    def get_order_by_id(self, order_id: int) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            order_row = connection.execute(
+                """
+                SELECT
+                    o.id, o.order_no, o.recipient_id, o.source_text, o.confidence, o.needs_review, o.status, o.created_at,
+                    r.name AS recipient_name, r.phone AS recipient_phone
+                FROM orders o
+                JOIN recipients r ON r.id = o.recipient_id
+                WHERE o.id = ?
+                """,
+                (order_id,),
+            ).fetchone()
+            if order_row is None:
+                return None
+            item_rows = connection.execute(
+                """
+                SELECT id, order_id, simple_code, brand, product_name, stage, quantity, unit
+                FROM order_items
+                WHERE order_id = ?
+                ORDER BY id ASC
+                """,
+                (order_id,),
+            ).fetchall()
+            items = [
+                {
+                    "id": int(item["id"]),
+                    "simple_code": str(item["simple_code"]),
+                    "brand": str(item["brand"] or ""),
+                    "product_name": str(item["product_name"]),
+                    "stage": str(item["stage"] or ""),
+                    "quantity": int(item["quantity"]),
+                    "unit": str(item["unit"]),
+                }
+                for item in item_rows
+            ]
+            return {
+                "id": int(order_row["id"]),
+                "order_no": str(order_row["order_no"]),
+                "recipient_id": int(order_row["recipient_id"]),
+                "source_text": str(order_row["source_text"]),
+                "confidence": float(order_row["confidence"]),
+                "needs_review": bool(int(order_row["needs_review"])),
+                "status": str(order_row["status"]),
+                "created_at": str(order_row["created_at"]),
+                "recipient_name": str(order_row["recipient_name"]),
+                "recipient_phone": str(order_row["recipient_phone"]),
+                "items": items,
+            }
 
     def create_order_manual(self, payload: dict[str, Any]) -> dict[str, object]:
         with get_connection(self.db_path) as connection:
@@ -362,17 +418,10 @@ class OrderRepository:
                         item["unit"],
                     ),
                 )
-            row = connection.execute(
-                "SELECT id FROM orders WHERE id = ?",
-                (int(order_id),),
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("failed to fetch order")
-        orders = self.list_orders()
-        for order in orders:
-            if int(str(order["id"])) == int(order_id):
-                return order
-        raise RuntimeError("failed to load order")
+        created = self.get_order_by_id(int(order_id))
+        if created is None:
+            raise RuntimeError("failed to load order")
+        return created
 
     def update_order(self, order_id: int, payload: dict[str, Any]) -> dict[str, object] | None:
         with get_connection(self.db_path) as connection:
@@ -398,11 +447,7 @@ class OrderRepository:
                 """,
                 (recipient_id, needs_review, status, order_id),
             )
-        orders = self.list_orders()
-        for order in orders:
-            if int(str(order["id"])) == order_id:
-                return order
-        return None
+        return self.get_order_by_id(order_id)
 
     def delete_order(self, order_id: int) -> bool:
         with get_connection(self.db_path) as connection:

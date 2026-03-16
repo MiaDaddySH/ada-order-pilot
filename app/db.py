@@ -104,6 +104,24 @@ def init_db(db_path: str) -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_recipients_name
+            ON recipients(name)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_orders_created_status
+            ON orders(created_at, status)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_order_items_order_id
+            ON order_items(order_id)
+            """
+        )
         columns = connection.execute("PRAGMA table_info(order_items)").fetchall()
         column_names = {str(row["name"]) for row in columns}
         if "simple_code" not in column_names:

@@ -1,6 +1,4 @@
 import re
-
-from app.db import init_db
 from app.llm_client import LLMOrderParser, Settings
 from app.repository import OrderRepository
 from app.schemas import (
@@ -30,10 +28,9 @@ from app.template_export import TemplateExporter
 
 
 class OrderParseService:
-    def __init__(self) -> None:
-        self.settings = Settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or Settings()
         self.parser = LLMOrderParser(self.settings)
-        init_db(self.settings.db_path)
         self.repository = OrderRepository(self.settings.db_path)
         self.template_exporter = TemplateExporter(self.settings)
 
