@@ -50,6 +50,87 @@ class OrderRepository:
                 raise RuntimeError("failed to create recipient")
             return int(recipient_id), True
 
+    def list_recipients(self) -> list[dict[str, object]]:
+        with get_connection(self.db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                FROM recipients
+                ORDER BY id DESC
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def create_recipient(self, payload: dict[str, Any]) -> dict[str, object]:
+        with get_connection(self.db_path) as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO recipients
+                (name, phone, province, city, district, address_detail, raw_address, postcode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["name"],
+                    payload["phone"],
+                    payload.get("province"),
+                    payload.get("city"),
+                    payload.get("district"),
+                    payload["address_detail"],
+                    payload["raw_address"],
+                    payload.get("postcode"),
+                ),
+            )
+            recipient_id = cursor.lastrowid
+            if recipient_id is None:
+                raise RuntimeError("failed to create recipient")
+            row = connection.execute(
+                """
+                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                FROM recipients WHERE id = ?
+                """,
+                (int(recipient_id),),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("failed to fetch recipient")
+            return dict(row)
+
+    def update_recipient(self, recipient_id: int, payload: dict[str, Any]) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE recipients
+                SET name = ?, phone = ?, province = ?, city = ?, district = ?, address_detail = ?, raw_address = ?, postcode = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    payload["name"],
+                    payload["phone"],
+                    payload.get("province"),
+                    payload.get("city"),
+                    payload.get("district"),
+                    payload["address_detail"],
+                    payload["raw_address"],
+                    payload.get("postcode"),
+                    recipient_id,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                FROM recipients WHERE id = ?
+                """,
+                (recipient_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def delete_recipient(self, recipient_id: int) -> bool:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute("SELECT id FROM recipients WHERE id = ?", (recipient_id,)).fetchone()
+            if row is None:
+                return False
+            connection.execute("DELETE FROM recipients WHERE id = ?", (recipient_id,))
+            return True
+
     def create_or_get_order(
         self,
         recipient_id: int,
@@ -104,6 +185,149 @@ class OrderRepository:
                     ),
                 )
             return order_no, status, True
+
+    def list_orders(self) -> list[dict[str, object]]:
+        with get_connection(self.db_path) as connection:
+            order_rows = connection.execute(
+                """
+                SELECT
+                    o.id, o.order_no, o.recipient_id, o.source_text, o.confidence, o.needs_review, o.status, o.created_at,
+                    r.name AS recipient_name, r.phone AS recipient_phone
+                FROM orders o
+                JOIN recipients r ON r.id = o.recipient_id
+                ORDER BY o.id DESC
+                """
+            ).fetchall()
+            item_rows = connection.execute(
+                """
+                SELECT id, order_id, simple_code, brand, product_name, stage, quantity, unit
+                FROM order_items
+                ORDER BY id ASC
+                """
+            ).fetchall()
+            items_by_order: dict[int, list[dict[str, object]]] = {}
+            for row in item_rows:
+                order_id = int(row["order_id"])
+                items_by_order.setdefault(order_id, []).append(
+                    {
+                        "id": int(row["id"]),
+                        "simple_code": str(row["simple_code"]),
+                        "brand": str(row["brand"] or ""),
+                        "product_name": str(row["product_name"]),
+                        "stage": str(row["stage"] or ""),
+                        "quantity": int(row["quantity"]),
+                        "unit": str(row["unit"]),
+                    }
+                )
+            results: list[dict[str, object]] = []
+            for row in order_rows:
+                order_id = int(row["id"])
+                results.append(
+                    {
+                        "id": order_id,
+                        "order_no": str(row["order_no"]),
+                        "recipient_id": int(row["recipient_id"]),
+                        "source_text": str(row["source_text"]),
+                        "confidence": float(row["confidence"]),
+                        "needs_review": bool(int(row["needs_review"])),
+                        "status": str(row["status"]),
+                        "created_at": str(row["created_at"]),
+                        "recipient_name": str(row["recipient_name"]),
+                        "recipient_phone": str(row["recipient_phone"]),
+                        "items": items_by_order.get(order_id, []),
+                    }
+                )
+            return results
+
+    def create_order_manual(self, payload: dict[str, Any]) -> dict[str, object]:
+        with get_connection(self.db_path) as connection:
+            order_no = self._generate_order_no()
+            cursor = connection.execute(
+                """
+                INSERT INTO orders
+                (order_no, recipient_id, source_text, confidence, needs_review, idempotency_key, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_no,
+                    int(payload["recipient_id"]),
+                    str(payload.get("source_text") or ""),
+                    float(payload.get("confidence") or 1.0),
+                    1 if bool(payload.get("needs_review")) else 0,
+                    uuid.uuid4().hex,
+                    str(payload.get("status") or "ready_to_upload"),
+                ),
+            )
+            order_id = cursor.lastrowid
+            if order_id is None:
+                raise RuntimeError("failed to create order")
+            for item in payload["items"]:
+                connection.execute(
+                    """
+                    INSERT INTO order_items
+                    (order_id, simple_code, brand, product_name, stage, quantity, unit)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(order_id),
+                        item["simple_code"],
+                        item.get("brand"),
+                        item["product_name"],
+                        item.get("stage"),
+                        int(item["quantity"]),
+                        item["unit"],
+                    ),
+                )
+            row = connection.execute(
+                "SELECT id FROM orders WHERE id = ?",
+                (int(order_id),),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("failed to fetch order")
+        orders = self.list_orders()
+        for order in orders:
+            if int(str(order["id"])) == int(order_id):
+                return order
+        raise RuntimeError("failed to load order")
+
+    def update_order(self, order_id: int, payload: dict[str, Any]) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            existing = connection.execute("SELECT id FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if existing is None:
+                return None
+            current = connection.execute(
+                "SELECT recipient_id, needs_review, status FROM orders WHERE id = ?",
+                (order_id,),
+            ).fetchone()
+            if current is None:
+                return None
+            recipient_id = int(payload.get("recipient_id") or current["recipient_id"])
+            needs_review = 1 if bool(payload.get("needs_review")) else int(current["needs_review"])
+            if "needs_review" not in payload:
+                needs_review = int(current["needs_review"])
+            status = str(payload.get("status") or current["status"])
+            connection.execute(
+                """
+                UPDATE orders
+                SET recipient_id = ?, needs_review = ?, status = ?
+                WHERE id = ?
+                """,
+                (recipient_id, needs_review, status, order_id),
+            )
+        orders = self.list_orders()
+        for order in orders:
+            if int(str(order["id"])) == order_id:
+                return order
+        return None
+
+    def delete_order(self, order_id: int) -> bool:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute("SELECT id FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if row is None:
+                return False
+            connection.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
+            connection.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+            return True
 
     def product_code_exists(self, simple_code: str) -> bool:
         with get_connection(self.db_path) as connection:
@@ -240,6 +464,52 @@ class OrderRepository:
                 status=int(row["status"]),
             )
 
+    def update_product(
+        self,
+        product_id: int,
+        product_name: str | None,
+        simple_code: str | None,
+        status: int | None,
+    ) -> ProductCatalogItem | None:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id, product_name, simple_code, status FROM product_catalog WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            next_name = product_name if product_name is not None else str(row["product_name"])
+            next_code = simple_code if simple_code is not None else str(row["simple_code"])
+            next_status = status if status is not None else int(row["status"])
+            connection.execute(
+                """
+                UPDATE product_catalog
+                SET product_name = ?, simple_code = ?, status = ?
+                WHERE id = ?
+                """,
+                (next_name, next_code, next_status, product_id),
+            )
+            updated = connection.execute(
+                "SELECT id, product_name, simple_code, status FROM product_catalog WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            if updated is None:
+                return None
+            return ProductCatalogItem(
+                id=int(updated["id"]),
+                product_name=str(updated["product_name"]),
+                simple_code=str(updated["simple_code"]),
+                status=int(updated["status"]),
+            )
+
+    def delete_product(self, product_id: int) -> bool:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute("SELECT id FROM product_catalog WHERE id = ?", (product_id,)).fetchone()
+            if row is None:
+                return False
+            connection.execute("DELETE FROM product_catalog WHERE id = ?", (product_id,))
+            return True
+
     def batch_upsert_products(self, items: list[tuple[str, str]]) -> int:
         with get_connection(self.db_path) as connection:
             upserted = 0
@@ -290,6 +560,174 @@ class OrderRepository:
                 simple_code=str(row["simple_code"]),
                 status=int(row["status"]),
             )
+
+    def list_sender_profiles(self) -> list[dict[str, object]]:
+        with get_connection(self.db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, phone, street, house_no, postcode, city, country_code, is_default
+                FROM sender_profiles
+                ORDER BY is_default DESC, id DESC
+                """
+            ).fetchall()
+            return [
+                {
+                    "id": int(row["id"]),
+                    "name": str(row["name"]),
+                    "phone": str(row["phone"]),
+                    "street": str(row["street"]),
+                    "house_no": str(row["house_no"]),
+                    "postcode": str(row["postcode"]),
+                    "city": str(row["city"]),
+                    "country_code": str(row["country_code"]),
+                    "is_default": bool(int(row["is_default"])),
+                }
+                for row in rows
+            ]
+
+    def get_default_sender_profile(self) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, phone, street, house_no, postcode, city, country_code, is_default
+                FROM sender_profiles
+                ORDER BY is_default DESC, id ASC
+                LIMIT 1
+                """
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "id": int(row["id"]),
+                "name": str(row["name"]),
+                "phone": str(row["phone"]),
+                "street": str(row["street"]),
+                "house_no": str(row["house_no"]),
+                "postcode": str(row["postcode"]),
+                "city": str(row["city"]),
+                "country_code": str(row["country_code"]),
+                "is_default": bool(int(row["is_default"])),
+            }
+
+    def create_sender_profile(self, payload: dict[str, Any]) -> dict[str, object]:
+        with get_connection(self.db_path) as connection:
+            if bool(payload.get("is_default")):
+                connection.execute("UPDATE sender_profiles SET is_default = 0")
+            cursor = connection.execute(
+                """
+                INSERT INTO sender_profiles
+                (name, phone, street, house_no, postcode, city, country_code, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["name"],
+                    payload["phone"],
+                    payload["street"],
+                    payload["house_no"],
+                    payload["postcode"],
+                    payload["city"],
+                    payload["country_code"],
+                    1 if bool(payload.get("is_default")) else 0,
+                ),
+            )
+            sender_id = cursor.lastrowid
+            if sender_id is None:
+                raise RuntimeError("failed to create sender profile")
+            row = connection.execute(
+                """
+                SELECT id, name, phone, street, house_no, postcode, city, country_code, is_default
+                FROM sender_profiles WHERE id = ?
+                """,
+                (int(sender_id),),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("failed to load sender profile")
+            return {
+                "id": int(row["id"]),
+                "name": str(row["name"]),
+                "phone": str(row["phone"]),
+                "street": str(row["street"]),
+                "house_no": str(row["house_no"]),
+                "postcode": str(row["postcode"]),
+                "city": str(row["city"]),
+                "country_code": str(row["country_code"]),
+                "is_default": bool(int(row["is_default"])),
+            }
+
+    def update_sender_profile(self, sender_id: int, payload: dict[str, Any]) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, phone, street, house_no, postcode, city, country_code, is_default
+                FROM sender_profiles WHERE id = ?
+                """,
+                (sender_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            next_default = bool(payload.get("is_default"))
+            if "is_default" not in payload:
+                next_default = bool(int(row["is_default"]))
+            if next_default:
+                connection.execute("UPDATE sender_profiles SET is_default = 0")
+            connection.execute(
+                """
+                UPDATE sender_profiles
+                SET name = ?, phone = ?, street = ?, house_no = ?, postcode = ?, city = ?, country_code = ?, is_default = ?
+                WHERE id = ?
+                """,
+                (
+                    payload.get("name", row["name"]),
+                    payload.get("phone", row["phone"]),
+                    payload.get("street", row["street"]),
+                    payload.get("house_no", row["house_no"]),
+                    payload.get("postcode", row["postcode"]),
+                    payload.get("city", row["city"]),
+                    payload.get("country_code", row["country_code"]),
+                    1 if next_default else 0,
+                    sender_id,
+                ),
+            )
+            updated = connection.execute(
+                """
+                SELECT id, name, phone, street, house_no, postcode, city, country_code, is_default
+                FROM sender_profiles WHERE id = ?
+                """,
+                (sender_id,),
+            ).fetchone()
+            if updated is None:
+                return None
+            return {
+                "id": int(updated["id"]),
+                "name": str(updated["name"]),
+                "phone": str(updated["phone"]),
+                "street": str(updated["street"]),
+                "house_no": str(updated["house_no"]),
+                "postcode": str(updated["postcode"]),
+                "city": str(updated["city"]),
+                "country_code": str(updated["country_code"]),
+                "is_default": bool(int(updated["is_default"])),
+            }
+
+    def delete_sender_profile(self, sender_id: int) -> bool:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id, is_default FROM sender_profiles WHERE id = ?",
+                (sender_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            connection.execute("DELETE FROM sender_profiles WHERE id = ?", (sender_id,))
+            if bool(int(row["is_default"])):
+                fallback = connection.execute(
+                    "SELECT id FROM sender_profiles ORDER BY id ASC LIMIT 1"
+                ).fetchone()
+                if fallback is not None:
+                    connection.execute(
+                        "UPDATE sender_profiles SET is_default = 1 WHERE id = ?",
+                        (int(fallback["id"]),),
+                    )
+            return True
 
     def _score_match(self, source: str, candidate_name: str, brand: str | None, stage: str | None) -> int:
         normalized_name = self._normalize(candidate_name)
@@ -342,6 +780,9 @@ class OrderRepository:
         if mixed:
             return mixed.group(1).strip()
         return None
+
+    def _generate_order_no(self) -> str:
+        return f"AO{uuid.uuid4().hex[:12].upper()}"
 
     def list_recipients_for_export(self) -> list[dict[str, object]]:
         with get_connection(self.db_path) as connection:

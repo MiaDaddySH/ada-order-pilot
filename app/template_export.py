@@ -19,11 +19,11 @@ class TemplateExporter:
             rows=self._build_recipient_rows(recipients),
         )
 
-    def export_orders(self, orders: list[dict[str, object]]) -> Path:
+    def export_orders(self, orders: list[dict[str, object]], sender_profile: dict[str, object] | None = None) -> Path:
         return self._export_with_template(
             template_path=Path(self.settings.order_template_path),
             output_prefix="订单导出",
-            rows=self._build_order_rows(orders),
+            rows=self._build_order_rows(orders, sender_profile=sender_profile),
         )
 
     def _export_with_template(
@@ -95,18 +95,31 @@ class TemplateExporter:
             )
         return rows
 
-    def _build_order_rows(self, orders: list[dict[str, object]]) -> list[dict[str, object]]:
+    def _build_order_rows(
+        self,
+        orders: list[dict[str, object]],
+        sender_profile: dict[str, object] | None = None,
+    ) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
+        sender_name = str(sender_profile["name"]) if sender_profile is not None else self.settings.sender_name
+        sender_phone = str(sender_profile["phone"]) if sender_profile is not None else self.settings.sender_phone
+        sender_street = str(sender_profile["street"]) if sender_profile is not None else self.settings.sender_street
+        sender_house_no = str(sender_profile["house_no"]) if sender_profile is not None else self.settings.sender_house_no
+        sender_postcode = str(sender_profile["postcode"]) if sender_profile is not None else self.settings.sender_postcode
+        sender_city = str(sender_profile["city"]) if sender_profile is not None else self.settings.sender_city
+        sender_country_code = (
+            str(sender_profile["country_code"]) if sender_profile is not None else self.settings.sender_country_code
+        )
         for order in orders:
             row: dict[str, Any] = {
                 "包裹备注": "",
-                "寄件人姓名": self.settings.sender_name,
-                "寄件人电话": self.settings.sender_phone,
-                "路名": self.settings.sender_street,
-                "门牌号": self.settings.sender_house_no,
-                "寄件人邮编": self.settings.sender_postcode,
-                "寄件人城市": self.settings.sender_city,
-                "寄件人国家简称": self.settings.sender_country_code,
+                "寄件人姓名": sender_name,
+                "寄件人电话": sender_phone,
+                "路名": sender_street,
+                "门牌号": sender_house_no,
+                "寄件人邮编": sender_postcode,
+                "寄件人城市": sender_city,
+                "寄件人国家简称": sender_country_code,
                 "收件人姓名": order.get("recipient_name"),
                 "身份证号": "",
                 "手机号码": order.get("recipient_phone"),

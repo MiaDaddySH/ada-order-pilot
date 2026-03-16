@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 
+from app.llm_client import Settings
 from app.product_seed import PRODUCT_ROWS
 
 
@@ -86,6 +87,22 @@ def init_db(db_path: str) -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sender_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                street TEXT NOT NULL,
+                house_no TEXT NOT NULL,
+                postcode TEXT NOT NULL,
+                city TEXT NOT NULL,
+                country_code TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         columns = connection.execute("PRAGMA table_info(order_items)").fetchall()
         column_names = {str(row["name"]) for row in columns}
         if "simple_code" not in column_names:
@@ -97,4 +114,24 @@ def init_db(db_path: str) -> None:
                 VALUES (?, ?, 1)
                 """,
                 (product_name, simple_code),
+            )
+        settings = Settings()
+        count_row = connection.execute("SELECT COUNT(1) AS cnt FROM sender_profiles").fetchone()
+        profile_count = int(count_row["cnt"]) if count_row is not None else 0
+        if profile_count == 0:
+            connection.execute(
+                """
+                INSERT INTO sender_profiles
+                (name, phone, street, house_no, postcode, city, country_code, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    settings.sender_name,
+                    settings.sender_phone,
+                    settings.sender_street,
+                    settings.sender_house_no,
+                    settings.sender_postcode,
+                    settings.sender_city,
+                    settings.sender_country_code,
+                ),
             )

@@ -3,12 +3,20 @@ from app.llm_client import LLMOrderParser, Settings
 from app.repository import OrderRepository
 from app.schemas import (
     BatchUpsertProductsRequest,
-    CreateProductRequest,
     CreateOrderFromInputResponse,
+    CreateProductRequest,
+    OrderCreateRequest,
+    OrderUpdateRequest,
+    OrderView,
     ParseOrderResponse,
     ParsedProduct,
     ParsedRecipient,
     ProductCatalogItem,
+    RecipientItem,
+    RecipientUpsertRequest,
+    SenderProfileItem,
+    SenderProfileUpsertRequest,
+    UpdateProductRequest,
     UpdateProductStatusRequest,
 )
 from app.template_export import TemplateExporter
@@ -100,6 +108,71 @@ class OrderParseService:
             raise ValueError("商品不存在")
         return updated
 
+    def update_product(self, product_id: int, payload: UpdateProductRequest) -> ProductCatalogItem:
+        updated = self.repository.update_product(
+            product_id=product_id,
+            product_name=payload.product_name.strip() if payload.product_name is not None else None,
+            simple_code=payload.simple_code.strip() if payload.simple_code is not None else None,
+            status=payload.status,
+        )
+        if updated is None:
+            raise ValueError("商品不存在")
+        return updated
+
+    def delete_product(self, product_id: int) -> bool:
+        return self.repository.delete_product(product_id)
+
+    def list_recipients(self) -> list[RecipientItem]:
+        rows = self.repository.list_recipients()
+        return [RecipientItem.model_validate(row) for row in rows]
+
+    def create_recipient(self, payload: RecipientUpsertRequest) -> RecipientItem:
+        row = self.repository.create_recipient(payload.model_dump())
+        return RecipientItem.model_validate(row)
+
+    def update_recipient(self, recipient_id: int, payload: RecipientUpsertRequest) -> RecipientItem:
+        row = self.repository.update_recipient(recipient_id, payload.model_dump())
+        if row is None:
+            raise ValueError("收件人不存在")
+        return RecipientItem.model_validate(row)
+
+    def delete_recipient(self, recipient_id: int) -> bool:
+        return self.repository.delete_recipient(recipient_id)
+
+    def list_orders(self) -> list[OrderView]:
+        rows = self.repository.list_orders()
+        return [OrderView.model_validate(row) for row in rows]
+
+    def create_order(self, payload: OrderCreateRequest) -> OrderView:
+        row = self.repository.create_order_manual(payload.model_dump())
+        return OrderView.model_validate(row)
+
+    def update_order(self, order_id: int, payload: OrderUpdateRequest) -> OrderView:
+        row = self.repository.update_order(order_id, payload.model_dump(exclude_none=True))
+        if row is None:
+            raise ValueError("订单不存在")
+        return OrderView.model_validate(row)
+
+    def delete_order(self, order_id: int) -> bool:
+        return self.repository.delete_order(order_id)
+
+    def list_senders(self) -> list[SenderProfileItem]:
+        rows = self.repository.list_sender_profiles()
+        return [SenderProfileItem.model_validate(row) for row in rows]
+
+    def create_sender(self, payload: SenderProfileUpsertRequest) -> SenderProfileItem:
+        row = self.repository.create_sender_profile(payload.model_dump())
+        return SenderProfileItem.model_validate(row)
+
+    def update_sender(self, sender_id: int, payload: SenderProfileUpsertRequest) -> SenderProfileItem:
+        row = self.repository.update_sender_profile(sender_id, payload.model_dump())
+        if row is None:
+            raise ValueError("寄件人不存在")
+        return SenderProfileItem.model_validate(row)
+
+    def delete_sender(self, sender_id: int) -> bool:
+        return self.repository.delete_sender_profile(sender_id)
+
     def export_recipients_template(self) -> str:
         recipients = self.repository.list_recipients_for_export()
         path = self.template_exporter.export_recipients(recipients)
@@ -116,5 +189,6 @@ class OrderParseService:
             recent_days=recent_days,
             limit=limit,
         )
-        path = self.template_exporter.export_orders(orders)
+        sender_profile = self.repository.get_default_sender_profile()
+        path = self.template_exporter.export_orders(orders, sender_profile=sender_profile)
         return str(path)

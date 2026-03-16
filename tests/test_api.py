@@ -171,6 +171,113 @@ def test_export_templates(tmp_path: Path) -> None:
     assert worksheet.cell(row=2, column=9).value not in (None, "")
 
 
+def test_management_crud_apis(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path / "test_manage.db")
+    client = TestClient(app)
+
+    created_recipient = client.post(
+        "/api/v1/recipients",
+        json={
+            "name": "张三",
+            "phone": "13800001111",
+            "province": "浙江省",
+            "city": "杭州市",
+            "district": "萧山区",
+            "address_detail": "测试路1号",
+            "raw_address": "浙江省杭州市萧山区测试路1号",
+            "postcode": "310000",
+        },
+    )
+    assert created_recipient.status_code == 200
+    recipient_id = created_recipient.json()["id"]
+    updated_recipient = client.put(
+        f"/api/v1/recipients/{recipient_id}",
+        json={
+            "name": "李四",
+            "phone": "13800002222",
+            "province": "浙江省",
+            "city": "杭州市",
+            "district": "滨江区",
+            "address_detail": "更新路2号",
+            "raw_address": "浙江省杭州市滨江区更新路2号",
+            "postcode": "310051",
+        },
+    )
+    assert updated_recipient.status_code == 200
+    assert updated_recipient.json()["name"] == "李四"
+
+    created_order = client.post(
+        "/api/v1/orders",
+        json={
+            "recipient_id": recipient_id,
+            "source_text": "手工创建",
+            "confidence": 1.0,
+            "needs_review": False,
+            "status": "ready_to_upload",
+            "items": [
+                {
+                    "simple_code": "HO2",
+                    "brand": "Holle",
+                    "product_name": "Holle有机婴幼儿牛奶粉2段600g",
+                    "stage": "2段",
+                    "quantity": 2,
+                    "unit": "盒",
+                }
+            ],
+        },
+    )
+    assert created_order.status_code == 200
+    order_id = created_order.json()["id"]
+    order_updated = client.put(f"/api/v1/orders/{order_id}", json={"status": "pending_review", "needs_review": True})
+    assert order_updated.status_code == 200
+    assert order_updated.json()["status"] == "pending_review"
+
+    product_created = client.post("/api/v1/products", json={"product_name": "测试商品X", "simple_code": "TXX"})
+    assert product_created.status_code == 200
+    product_id = product_created.json()["id"]
+    product_updated = client.put(f"/api/v1/products/{product_id}", json={"status": 0})
+    assert product_updated.status_code == 200
+    assert product_updated.json()["status"] == 0
+
+    senders = client.get("/api/v1/senders")
+    assert senders.status_code == 200
+    sender_created = client.post(
+        "/api/v1/senders",
+        json={
+            "name": "新寄件人",
+            "phone": "13900003333",
+            "street": "Main St",
+            "house_no": "8A",
+            "postcode": "70100",
+            "city": "Stuttgart",
+            "country_code": "DE",
+            "is_default": True,
+        },
+    )
+    assert sender_created.status_code == 200
+    sender_id = sender_created.json()["id"]
+    sender_updated = client.put(
+        f"/api/v1/senders/{sender_id}",
+        json={
+            "name": "寄件人B",
+            "phone": "13900004444",
+            "street": "Second St",
+            "house_no": "9",
+            "postcode": "70200",
+            "city": "Berlin",
+            "country_code": "DE",
+            "is_default": True,
+        },
+    )
+    assert sender_updated.status_code == 200
+    assert sender_updated.json()["name"] == "寄件人B"
+
+    assert client.delete(f"/api/v1/orders/{order_id}").status_code == 200
+    assert client.delete(f"/api/v1/recipients/{recipient_id}").status_code == 200
+    assert client.delete(f"/api/v1/products/{product_id}").status_code == 200
+    assert client.delete(f"/api/v1/senders/{sender_id}").status_code == 200
+
+
 def _create_recipient_template(path: Path) -> None:
     workbook = Workbook()
     sheet = workbook.active

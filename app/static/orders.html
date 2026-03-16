@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>订单列表</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; margin: 20px; background: #f6f8fb; }
+      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+      .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      input, textarea { padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; width: 100%; box-sizing: border-box; }
+      textarea { min-height: 70px; }
+      button { border: none; border-radius: 8px; background: #2563eb; color: #fff; padding: 8px 12px; cursor: pointer; margin-right: 8px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; vertical-align: top; }
+      .muted { color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <button onclick="window.location.href='/'">返回首页</button>
+      <h2>订单列表（增删改查）</h2>
+      <div class="row">
+        <input id="recipientId" placeholder="收件人ID" />
+        <input id="status" placeholder="状态: ready_to_upload" />
+        <input id="confidence" placeholder="置信度: 1.0" />
+        <input id="needsReview" placeholder="需复核: true/false" />
+      </div>
+      <div style="margin-top:8px">
+        <textarea id="sourceText" placeholder="source_text"></textarea>
+        <textarea id="items" placeholder='商品JSON数组，例如: [{"simple_code":"HO2","product_name":"Holle有机婴幼儿牛奶粉2段600g","quantity":2,"unit":"盒","brand":"Holle","stage":"2段"}]'></textarea>
+      </div>
+      <div style="margin-top:10px">
+        <button id="createBtn">新增订单</button>
+        <button id="updateBtn">更新选中</button>
+        <button id="deleteBtn">删除选中</button>
+        <span class="muted" id="statusInfo">未选择记录</span>
+      </div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>ID</th><th>订单号</th><th>收件人</th><th>状态</th><th>商品</th><th>创建时间</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <script>
+      let selectedId = null;
+      let selectedOrder = null;
+      function parseBool(v) { return String(v).toLowerCase() === "true"; }
+      function buildPayload() {
+        return {
+          recipient_id: Number(document.getElementById("recipientId").value),
+          source_text: document.getElementById("sourceText").value,
+          confidence: Number(document.getElementById("confidence").value || 1),
+          needs_review: parseBool(document.getElementById("needsReview").value || "false"),
+          status: document.getElementById("status").value || "ready_to_upload",
+          items: JSON.parse(document.getElementById("items").value || "[]"),
+        };
+      }
+      function fill(order) {
+        selectedOrder = order;
+        document.getElementById("recipientId").value = order.recipient_id;
+        document.getElementById("status").value = order.status;
+        document.getElementById("confidence").value = order.confidence;
+        document.getElementById("needsReview").value = String(order.needs_review);
+        document.getElementById("sourceText").value = order.source_text;
+        document.getElementById("items").value = JSON.stringify(order.items, null, 2);
+      }
+      async function refresh() {
+        const res = await fetch("/api/v1/orders");
+        const data = await res.json();
+        const body = document.getElementById("rows");
+        body.innerHTML = "";
+        data.forEach((item) => {
+          const tr = document.createElement("tr");
+          const itemText = (item.items || []).map((x) => `${x.simple_code}*${x.quantity}`).join(", ");
+          tr.innerHTML = `<td>${item.id}</td><td>${item.order_no}</td><td>${item.recipient_name}(${item.recipient_phone})</td><td>${item.status}</td><td>${itemText}</td><td>${item.created_at}</td>`;
+          tr.onclick = () => {
+            selectedId = item.id;
+            fill(item);
+            document.getElementById("statusInfo").textContent = `已选择 ID=${item.id}`;
+          };
+          body.appendChild(tr);
+        });
+      }
+      document.getElementById("createBtn").onclick = async () => {
+        await fetch("/api/v1/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildPayload()) });
+        await refresh();
+      };
+      document.getElementById("updateBtn").onclick = async () => {
+        if (!selectedId) return;
+        const payload = {
+          status: document.getElementById("status").value || selectedOrder.status,
+          needs_review: parseBool(document.getElementById("needsReview").value || String(selectedOrder.needs_review)),
+          recipient_id: Number(document.getElementById("recipientId").value || selectedOrder.recipient_id),
+        };
+        await fetch(`/api/v1/orders/${selectedId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        await refresh();
+      };
+      document.getElementById("deleteBtn").onclick = async () => {
+        if (!selectedId) return;
+        await fetch(`/api/v1/orders/${selectedId}`, { method: "DELETE" });
+        selectedId = null;
+        selectedOrder = null;
+        document.getElementById("statusInfo").textContent = "未选择记录";
+        await refresh();
+      };
+      refresh();
+    </script>
+  </body>
+</html>
