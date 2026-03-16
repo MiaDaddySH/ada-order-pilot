@@ -747,11 +747,18 @@ class OrderRepository:
             normalized_stage = self._normalize(stage)
             if normalized_stage and normalized_stage in normalized_name:
                 score += 3
+        source_stage_match = re.search(r"(pre|\d+\+?)", source)
+        if source_stage_match:
+            inferred_stage = self._normalize(source_stage_match.group(1))
+            if inferred_stage and inferred_stage in normalized_name:
+                score += 3
         if "牛奶" in source:
             if "羊奶" in normalized_name:
                 score -= 2
             if "全脂" in normalized_name or "牛" in normalized_name:
                 score += 2
+        if "牛" in source and "全脂" in normalized_name:
+            score += 2
         if "羊" in source and "羊" in normalized_name:
             score += 1
         if "牛" in source and "牛" in normalized_name:

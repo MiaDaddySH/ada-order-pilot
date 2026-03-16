@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 
 from app.main import app
+from app.repository import OrderRepository
+from app.db import init_db
 
 os.environ["PARSE_MODE"] = "fallback"
 
@@ -26,6 +28,19 @@ def test_parse_order_input_llm_only_without_key_returns_503(tmp_path: Path) -> N
     response = client.post("/api/v1/parse-order-input", json={"input_text": "测试地址 王明 13800138000"})
     assert response.status_code == 503
     os.environ["PARSE_MODE"] = "fallback"
+
+
+def test_resolve_product_code_for_short_alias_text(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "test_resolve_alias.db")
+    init_db(db_path)
+    repository = OrderRepository(db_path)
+    code = repository.resolve_product_code(
+        source_text="狮子牛12+8罐，沈钦雨13867104278，浙江省杭州市萧山区蜀山街道山水苑34-1-501",
+        product_name="狮子牛12+8罐",
+        brand=None,
+        stage=None,
+    )
+    assert code == "42604770514557"
 
 
 def test_index_page() -> None:
