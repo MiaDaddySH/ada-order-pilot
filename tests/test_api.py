@@ -85,6 +85,24 @@ def test_parse_order_input_with_plus_symbol_for_lewenzan(tmp_path: Path) -> None
     assert body["products"][0]["quantity"] == 8
 
 
+def test_parse_order_input_with_inline_phone_and_address_label(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_parse_inline_phone.db"
+    os.environ["LLM_API_KEY"] = ""
+    os.environ["LLM_BASE_URL"] = ""
+    client = TestClient(app)
+    payload = {
+        "input_text": "刘琳琳：电话 18068655678 江苏省 南通市 如东县 城中街道 泰山路22号碧桂园二期别墅5302"
+    }
+    response = client.post("/api/v1/parse-order-input", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recipient"]["name"] == "刘琳琳"
+    assert body["recipient"]["province"] == "江苏省"
+    assert body["recipient"]["city"] == "南通市"
+    assert body["recipient"]["district"] == "如东县"
+    assert "泰山路22号" in body["recipient"]["address_detail"]
+
+
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_order.db"
     client = TestClient(app)

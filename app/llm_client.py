@@ -166,13 +166,17 @@ class LLMOrderParser:
                 line_with_phone = line
                 break
         candidate = line_with_phone if line_with_phone else normalized
+        before_phone = candidate.split(phone, maxsplit=1)[0]
+        explicit_name = re.search(r"([\u4e00-\u9fff]{2,6})\s*[：: ]*\s*(?:电话)?\s*$", before_phone)
+        if explicit_name:
+            return explicit_name.group(1)
         candidate = candidate.replace(phone, " ")
         parts = [part.strip() for part in re.split(r"[，,;；]", candidate) if part.strip()]
         if parts:
             candidate = parts[-1]
         name_matches = re.findall(r"[\u4e00-\u9fff]{2,6}", candidate)
         if name_matches:
-            return str(name_matches[-1])
+            return str(name_matches[0])
         return "待确认"
 
     def _extract_address_source(self, text: str, phone: str) -> str:
@@ -182,15 +186,16 @@ class LLMOrderParser:
             if phone in line:
                 continue
             if any(token in line for token in ("省", "市", "区", "县", "街道", "镇", "路", "号")):
-                return line
+                return self._trim_to_address_start(line)
         without_phone = normalized.replace(phone, " ")
+        without_phone = self._trim_to_address_start(without_phone)
         parts = [part.strip() for part in re.split(r"[，,;；]", without_phone) if part.strip()]
         if parts:
             return parts[0]
         return without_phone.strip()
 
     def _split_address(self, address: str) -> tuple[str | None, str | None, str | None, str]:
-        working = address.strip()
+        working = self._trim_to_address_start(address.strip())
         province = None
         city = None
         district = None
@@ -218,3 +223,10 @@ class LLMOrderParser:
 
         address_detail = working if working else address.strip()
         return province, city, district, address_detail
+
+    def _trim_to_address_start(self, value: str) -> str:
+        trimmed = re.sub(r"^\s*地址[:：]?\s*", "", value).strip()
+        matched = re.search(r"([\u4e00-\u9fff]{2,}(?:省|自治区|特别行政区)|[\u4e00-\u9fff]{2,}市)", trimmed)
+        if matched:
+            return trimmed[matched.start() :].strip()
+        return trimmed
