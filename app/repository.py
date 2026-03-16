@@ -112,6 +112,23 @@ class OrderRepository:
             ).fetchone()
             return row is not None
 
+    def get_active_product_by_code(self, simple_code: str) -> tuple[str, str | None] | None:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT product_name
+                FROM product_catalog
+                WHERE upper(simple_code) = upper(?) AND status = 1
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (simple_code,),
+            ).fetchone()
+            if row is None:
+                return None
+            product_name = str(row["product_name"])
+            return product_name, self._extract_brand_from_catalog_name(product_name)
+
     def resolve_product_code(
         self,
         source_text: str,
@@ -274,6 +291,11 @@ class OrderRepository:
         score = 0
         if normalized_name and normalized_name in source:
             score += 8
+        inferred_brand = self._extract_brand_from_catalog_name(candidate_name)
+        if inferred_brand:
+            normalized_inferred_brand = self._normalize(inferred_brand)
+            if normalized_inferred_brand and normalized_inferred_brand in source:
+                score += 4
         if brand:
             normalized_brand = self._normalize(brand)
             if normalized_brand and normalized_brand in normalized_name:
@@ -295,6 +317,16 @@ class OrderRepository:
         compact = compact.replace("克", "g")
         compact = compact.replace("段", "段")
         return re.sub(r"[^0-9a-z\u4e00-\u9fff\+]+", "", compact)
+
+    def _extract_brand_from_catalog_name(self, product_name: str) -> str | None:
+        cleaned = product_name.strip()
+        latin = re.match(r"^([A-Za-z][A-Za-z ]{1,30})", cleaned)
+        if latin:
+            return latin.group(1).strip()
+        mixed = re.match(r"^([\u4e00-\u9fffA-Za-z]{2,20})", cleaned)
+        if mixed:
+            return mixed.group(1).strip()
+        return None
 
     def list_recipients_for_export(self) -> list[dict[str, object]]:
         with get_connection(self.db_path) as connection:

@@ -40,6 +40,9 @@ def test_parse_order_input(tmp_path: Path) -> None:
     assert body["recipient"]["city"] == "广州市"
     assert body["recipient"]["district"] == "花都区"
     assert "庙南巷42号" in body["recipient"]["address_detail"]
+    assert body["products"][0]["simple_code"] is not None
+    assert "holle" in (body["products"][0]["brand"] or "").lower()
+    assert "holle" in body["products"][0]["product_name"].lower()
 
 
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:

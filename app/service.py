@@ -32,6 +32,13 @@ class OrderParseService:
             product.simple_code = resolved
             if resolved is None:
                 unresolved = True
+                continue
+            catalog_product = self.repository.get_active_product_by_code(resolved)
+            if catalog_product is not None:
+                catalog_name, catalog_brand = catalog_product
+                product.product_name = catalog_name
+                if catalog_brand:
+                    product.brand = catalog_brand
         confidence = result.confidence
         if unresolved:
             confidence = min(confidence, 0.5)
