@@ -134,10 +134,13 @@ def test_export_templates(tmp_path: Path) -> None:
     assert created.status_code == 200
     recipients_file = client.get("/api/v1/export/recipients-template")
     orders_file = client.get("/api/v1/export/orders-template", params={"recent_days": 7, "limit": 10})
+    orders_data_file = client.get("/api/v1/export/orders", params={"recent_days": 7, "limit": 10})
     assert recipients_file.status_code == 200
     assert orders_file.status_code == 200
+    assert orders_data_file.status_code == 200
     assert recipients_file.content[:2] == b"PK"
     assert orders_file.content[:2] == b"PK"
+    assert orders_data_file.content[:2] == b"PK"
 
 
 def _create_recipient_template(path: Path) -> None:

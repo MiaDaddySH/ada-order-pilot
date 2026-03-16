@@ -117,3 +117,17 @@ class OrderParseService:
         )
         path = self.template_exporter.export_orders(orders)
         return str(path)
+
+    def export_orders_data(
+        self,
+        status: str | None = "ready_to_upload",
+        recent_days: int | None = None,
+        limit: int | None = None,
+    ) -> str:
+        orders = self.repository.list_orders_for_export(
+            status=status,
+            recent_days=recent_days,
+            limit=limit,
+        )
+        path = self.template_exporter.export_orders_data(orders)
+        return str(path)

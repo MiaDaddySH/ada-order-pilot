@@ -87,3 +87,14 @@ def export_orders_template(
     service = OrderParseService()
     path = service.export_orders_template(status=status, recent_days=recent_days, limit=limit)
     return FileResponse(path=path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/api/v1/export/orders")
+def export_orders(
+    status: str | None = "ready_to_upload",
+    recent_days: int | None = None,
+    limit: int | None = None,
+) -> FileResponse:
+    service = OrderParseService()
+    path = service.export_orders_data(status=status, recent_days=recent_days, limit=limit)
+    return FileResponse(path=path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

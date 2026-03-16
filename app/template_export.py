@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.llm_client import Settings
@@ -25,6 +25,56 @@ class TemplateExporter:
             output_prefix="订单导出",
             rows=self._build_order_rows(orders),
         )
+
+    def export_orders_data(self, orders: list[dict[str, object]]) -> Path:
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "订单数据"
+        headers = [
+            "订单号",
+            "订单状态",
+            "创建时间",
+            "收件人",
+            "手机号",
+            "省",
+            "市",
+            "区",
+            "详细地址",
+            "商品代码",
+            "商品名称",
+            "数量",
+        ]
+        for idx, header in enumerate(headers, start=1):
+            worksheet.cell(row=1, column=idx).value = header
+        row_index = 2
+        for order in orders:
+            raw_items = order.get("items", [])
+            items: list[dict[str, object]] = []
+            if isinstance(raw_items, list):
+                for item in raw_items:
+                    if isinstance(item, dict):
+                        items.append(item)
+            if not items:
+                items = [{"simple_code": "", "product_name": "", "quantity": ""}]
+            for item in items:
+                worksheet.cell(row=row_index, column=1).value = order.get("order_no")
+                worksheet.cell(row=row_index, column=2).value = order.get("order_status")
+                worksheet.cell(row=row_index, column=3).value = order.get("created_at")
+                worksheet.cell(row=row_index, column=4).value = order.get("recipient_name")
+                worksheet.cell(row=row_index, column=5).value = order.get("recipient_phone")
+                worksheet.cell(row=row_index, column=6).value = order.get("province")
+                worksheet.cell(row=row_index, column=7).value = order.get("city")
+                worksheet.cell(row=row_index, column=8).value = order.get("district")
+                worksheet.cell(row=row_index, column=9).value = order.get("address_detail")
+                worksheet.cell(row=row_index, column=10).value = item.get("simple_code")
+                worksheet.cell(row=row_index, column=11).value = item.get("product_name")
+                worksheet.cell(row=row_index, column=12).value = item.get("quantity")
+                row_index += 1
+        export_dir = Path(self.settings.export_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        output_path = export_dir / f"订单数据导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        workbook.save(output_path)
+        return output_path
 
     def _export_with_template(
         self,

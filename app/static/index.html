@@ -99,7 +99,7 @@
       </div>
 
       <div class="card">
-        <h2>模板导出</h2>
+        <h2>订单导出</h2>
         <div class="row">
           <div>
             <label>导出最近天数（可选）</label>
@@ -112,7 +112,8 @@
         </div>
         <div class="actions">
           <button class="secondary" id="exportRecipientsBtn">导出收件人模板</button>
-          <button class="secondary" id="exportOrdersBtn">导出订单模板</button>
+          <button class="secondary" id="exportOrdersBtn">导出订单数据</button>
+          <button class="secondary" id="exportOrdersTemplateBtn">导出订单模板</button>
         </div>
       </div>
 
@@ -200,6 +201,20 @@
       };
 
       document.getElementById("exportOrdersBtn").onclick = () => {
+        const recentDays = document.getElementById("recentDays").value.trim();
+        const orderLimit = document.getElementById("orderLimit").value.trim();
+        const query = new URLSearchParams();
+        if (recentDays) {
+          query.set("recent_days", recentDays);
+        }
+        if (orderLimit) {
+          query.set("limit", orderLimit);
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        window.open(`/api/v1/export/orders${suffix}`, "_blank");
+      };
+
+      document.getElementById("exportOrdersTemplateBtn").onclick = () => {
         const recentDays = document.getElementById("recentDays").value.trim();
         const orderLimit = document.getElementById("orderLimit").value.trim();
         const query = new URLSearchParams();
