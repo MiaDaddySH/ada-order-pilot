@@ -8,6 +8,11 @@ from app.schemas import ParseOrderResponse, ProductCatalogItem
 
 
 class OrderRepository:
+    _SOURCE_ALIASES: tuple[tuple[str, str], ...] = (
+        ("小狮子", "乐温赞"),
+        ("狮子", "乐温赞"),
+    )
+
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
 
@@ -312,6 +317,8 @@ class OrderRepository:
 
     def _normalize(self, value: str) -> str:
         compact = value.lower().replace(" ", "")
+        for alias, canonical in self._SOURCE_ALIASES:
+            compact = compact.replace(alias, canonical)
         compact = compact.replace("（", "(").replace("）", ")")
         compact = compact.replace("＋", "+")
         compact = compact.replace("克", "g")
@@ -320,6 +327,14 @@ class OrderRepository:
 
     def _extract_brand_from_catalog_name(self, product_name: str) -> str | None:
         cleaned = product_name.strip()
+        marker_positions = [
+            cleaned.find(marker) for marker in ("婴幼儿", "奶粉", "有机", "全脂", "羊奶", "牛奶", "燕麦", "谷物")
+        ]
+        valid_positions = [pos for pos in marker_positions if pos > 0]
+        if valid_positions:
+            candidate = cleaned[: min(valid_positions)].strip()
+            if 2 <= len(candidate) <= 12:
+                return candidate
         latin = re.match(r"^([A-Za-z][A-Za-z ]{1,30})", cleaned)
         if latin:
             return latin.group(1).strip()

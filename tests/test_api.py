@@ -46,6 +46,25 @@ def test_parse_order_input(tmp_path: Path) -> None:
     assert "holle" in body["products"][0]["product_name"].lower()
 
 
+def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_parse_alias.db"
+    os.environ["LLM_API_KEY"] = ""
+    os.environ["LLM_BASE_URL"] = ""
+    client = TestClient(app)
+    payload = {
+        "input_text": "浙江省杭州市萧山区蜀山街道山水苑34-1-501\n沈钦雨 13867104278（狮子牛12+8罐）"
+    }
+    response = client.post("/api/v1/parse-order-input", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recipient"]["province"] == "浙江省"
+    assert body["recipient"]["city"] == "杭州市"
+    assert body["recipient"]["district"] == "萧山区"
+    assert body["products"][0]["simple_code"] == "42604770514557"
+    assert "乐温赞" in body["products"][0]["product_name"]
+    assert body["products"][0]["quantity"] == 8
+
+
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_order.db"
     client = TestClient(app)
