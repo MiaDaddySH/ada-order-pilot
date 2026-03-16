@@ -737,6 +737,58 @@ class OrderRepository:
                     )
             return True
 
+    def batch_upsert_sender_profiles(self, payloads: list[dict[str, Any]]) -> int:
+        with get_connection(self.db_path) as connection:
+            imported = 0
+            for payload in payloads:
+                existing = connection.execute(
+                    """
+                    SELECT id FROM sender_profiles
+                    WHERE name = ? AND phone = ?
+                    LIMIT 1
+                    """,
+                    (payload["name"], payload["phone"]),
+                ).fetchone()
+                if bool(payload.get("is_default")):
+                    connection.execute("UPDATE sender_profiles SET is_default = 0")
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO sender_profiles
+                        (name, phone, street, house_no, postcode, city, country_code, is_default)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            payload["name"],
+                            payload["phone"],
+                            payload["street"],
+                            payload["house_no"],
+                            payload["postcode"],
+                            payload["city"],
+                            payload["country_code"],
+                            1 if bool(payload.get("is_default")) else 0,
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE sender_profiles
+                        SET street = ?, house_no = ?, postcode = ?, city = ?, country_code = ?, is_default = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            payload["street"],
+                            payload["house_no"],
+                            payload["postcode"],
+                            payload["city"],
+                            payload["country_code"],
+                            1 if bool(payload.get("is_default")) else 0,
+                            int(existing["id"]),
+                        ),
+                    )
+                imported += 1
+            return imported
+
     def _score_match(self, source: str, candidate_name: str, brand: str | None, stage: str | None) -> int:
         normalized_name = self._normalize(candidate_name)
         score = 0

@@ -331,6 +331,25 @@ def test_management_crud_apis(tmp_path: Path) -> None:
     )
     assert sender_updated.status_code == 200
     assert sender_updated.json()["name"] == "寄件人B"
+    sender_batch = client.post(
+        "/api/v1/senders/batch-upsert",
+        json={
+            "senders": [
+                {
+                    "name": "批量寄件人A",
+                    "phone": "13900005555",
+                    "street": "Third St",
+                    "house_no": "10",
+                    "postcode": "70300",
+                    "city": "Munich",
+                    "country_code": "DE",
+                    "is_default": False,
+                }
+            ]
+        },
+    )
+    assert sender_batch.status_code == 200
+    assert sender_batch.json()["imported_count"] == 1
 
     assert client.delete(f"/api/v1/orders/{order_id}").status_code == 200
     assert client.delete(f"/api/v1/recipients/{recipient_id}").status_code == 200

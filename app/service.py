@@ -14,6 +14,8 @@ from app.schemas import (
     ProductCatalogItem,
     RecipientItem,
     RecipientUpsertRequest,
+    SenderBatchUpsertRequest,
+    SenderImportImageResponse,
     SenderProfileItem,
     SenderProfileUpsertRequest,
     UpdateProductRequest,
@@ -158,6 +160,33 @@ class OrderParseService:
 
     def delete_sender(self, sender_id: int) -> bool:
         return self.repository.delete_sender_profile(sender_id)
+
+    def batch_upsert_senders(self, payload: SenderBatchUpsertRequest) -> int:
+        items = []
+        for item in payload.senders:
+            data = item.model_dump()
+            data["name"] = data["name"].strip()
+            data["phone"] = data["phone"].strip()
+            data["street"] = data["street"].strip()
+            data["house_no"] = data["house_no"].strip()
+            data["postcode"] = data["postcode"].strip()
+            data["city"] = data["city"].strip()
+            data["country_code"] = data["country_code"].strip().upper()
+            items.append(data)
+        return self.repository.batch_upsert_sender_profiles(items)
+
+    def import_senders_from_image(self, image_bytes: bytes, mime_type: str) -> SenderImportImageResponse:
+        parsed = self.parser.parse_senders_from_image(image_bytes=image_bytes, mime_type=mime_type)
+        if not parsed:
+            return SenderImportImageResponse(imported_count=0, senders=[])
+        imported_count = self.repository.batch_upsert_sender_profiles(parsed)
+        rows = self.repository.list_sender_profiles()
+        sender_map = {(str(row["name"]), str(row["phone"])): row for row in rows}
+        imported_rows = [sender_map[(str(item["name"]), str(item["phone"]))] for item in parsed if (str(item["name"]), str(item["phone"])) in sender_map]
+        return SenderImportImageResponse(
+            imported_count=imported_count,
+            senders=[SenderProfileItem.model_validate(row) for row in imported_rows],
+        )
 
     def export_recipients_template(self) -> str:
         recipients = self.repository.list_recipients_for_export()

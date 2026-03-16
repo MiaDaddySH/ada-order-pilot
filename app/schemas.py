@@ -141,6 +141,20 @@ class SenderProfileUpsertRequest(BaseModel):
     is_default: bool = False
 
 
+class SenderBatchUpsertRequest(BaseModel):
+    senders: list[SenderProfileUpsertRequest] = Field(min_length=1, max_length=500)
+
+
+class SenderImportImageResponse(BaseModel):
+    imported_count: int
+    senders: list[SenderProfileItem]
+
+
+class SenderImportImageRequest(BaseModel):
+    image_base64: str = Field(min_length=16)
+    mime_type: str = Field(min_length=5, max_length=50)
+
+
 class CreateProductRequest(BaseModel):
     product_name: str = Field(min_length=1, max_length=200)
     simple_code: str = Field(min_length=1, max_length=64)
