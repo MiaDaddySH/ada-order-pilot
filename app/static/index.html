@@ -100,6 +100,16 @@
 
       <div class="card">
         <h2>模板导出</h2>
+        <div class="row">
+          <div>
+            <label>导出最近天数（可选）</label>
+            <input id="recentDays" placeholder="例如：7" />
+          </div>
+          <div>
+            <label>导出订单数上限（可选）</label>
+            <input id="orderLimit" placeholder="例如：50" />
+          </div>
+        </div>
         <div class="actions">
           <button class="secondary" id="exportRecipientsBtn">导出收件人模板</button>
           <button class="secondary" id="exportOrdersBtn">导出订单模板</button>
@@ -190,7 +200,17 @@
       };
 
       document.getElementById("exportOrdersBtn").onclick = () => {
-        window.open("/api/v1/export/orders-template", "_blank");
+        const recentDays = document.getElementById("recentDays").value.trim();
+        const orderLimit = document.getElementById("orderLimit").value.trim();
+        const query = new URLSearchParams();
+        if (recentDays) {
+          query.set("recent_days", recentDays);
+        }
+        if (orderLimit) {
+          query.set("limit", orderLimit);
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        window.open(`/api/v1/export/orders-template${suffix}`, "_blank");
       };
 
       async function refreshProducts() {

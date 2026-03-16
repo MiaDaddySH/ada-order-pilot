@@ -133,7 +133,7 @@ def test_export_templates(tmp_path: Path) -> None:
     created = client.post("/api/v1/orders/from-input", json=payload)
     assert created.status_code == 200
     recipients_file = client.get("/api/v1/export/recipients-template")
-    orders_file = client.get("/api/v1/export/orders-template")
+    orders_file = client.get("/api/v1/export/orders-template", params={"recent_days": 7, "limit": 10})
     assert recipients_file.status_code == 200
     assert orders_file.status_code == 200
     assert recipients_file.content[:2] == b"PK"

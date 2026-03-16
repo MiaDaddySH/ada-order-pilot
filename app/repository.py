@@ -339,13 +339,19 @@ class OrderRepository:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def list_orders_for_export(self, status: str | None = "ready_to_upload") -> list[dict[str, object]]:
+    def list_orders_for_export(
+        self,
+        status: str | None = "ready_to_upload",
+        recent_days: int | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
         with get_connection(self.db_path) as connection:
             sql = """
                 SELECT
                     o.id AS order_id,
                     o.order_no AS order_no,
                     o.status AS order_status,
+                    o.created_at AS created_at,
                     r.name AS recipient_name,
                     r.phone AS recipient_phone,
                     r.province AS province,
@@ -360,10 +366,19 @@ class OrderRepository:
                 JOIN order_items oi ON oi.order_id = o.id
             """
             params: list[object] = []
+            clauses: list[str] = []
             if status is not None:
-                sql += " WHERE o.status = ?"
+                clauses.append("o.status = ?")
                 params.append(status)
-            sql += " ORDER BY o.id ASC, oi.id ASC"
+            if recent_days is not None and recent_days > 0:
+                clauses.append("o.created_at >= datetime('now', ?)")
+                params.append(f"-{recent_days} days")
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            sql += " ORDER BY o.created_at DESC, o.id DESC, oi.id ASC"
+            if limit is not None and limit > 0:
+                sql += " LIMIT ?"
+                params.append(limit * 6)
             rows = connection.execute(sql, params).fetchall()
             grouped: dict[str, dict[str, Any]] = {}
             for row in rows:
@@ -378,6 +393,7 @@ class OrderRepository:
                         "city": str(row["city"] or ""),
                         "district": str(row["district"] or ""),
                         "address_detail": str(row["address_detail"]),
+                        "created_at": str(row["created_at"] or ""),
                         "items": [],
                     }
                 grouped[order_no]["items"].append(
@@ -387,4 +403,6 @@ class OrderRepository:
                         "product_name": str(row["product_name"]),
                     }
                 )
+                if limit is not None and limit > 0 and len(grouped) >= limit:
+                    break
             return list(grouped.values())
