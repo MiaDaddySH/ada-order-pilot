@@ -202,8 +202,10 @@ class LLMOrderParser:
             "你是收件人信息提取器。"
             "从图片中提取收件人列表，并输出 JSON 对象，字段为 recipients。"
             "每个 recipient 包含 name,phone,id_card_no,province,city,district,address_detail,raw_address,postcode。"
-            "id_card_no、province、city、district、postcode可以为空。"
-            "raw_address优先使用原始完整地址文本。"
+            "name、phone、id_card_no、address_detail、raw_address、postcode 按图片原文填写，不要改写。"
+            "仅对城市列做行政区划拆分，输出 province、city、district。"
+            "如果图片里城市列包含类似“浙江省杭州市萧山区”或“上海市浦东新区”，请正确拆分。"
+            "如果无法拆分，province、city、district 可为空。"
             "只输出 JSON，不要其他文本。"
         )
         response = client.chat.completions.create(
@@ -235,7 +237,7 @@ class LLMOrderParser:
             raw_address = str(item.get("raw_address") or "").strip()
             if not all([name, phone, address_detail]):
                 continue
-            id_card_no = str(item.get("id_card_no") or "").strip().upper() or None
+            id_card_no = str(item.get("id_card_no") or "").strip() or None
             province = str(item.get("province") or "").strip() or None
             city = str(item.get("city") or "").strip() or None
             district = str(item.get("district") or "").strip() or None

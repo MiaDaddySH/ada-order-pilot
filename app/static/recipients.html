@@ -43,6 +43,7 @@
               <button class="secondary" id="imageImportBtn">确认导入预览</button>
             </div>
             <pre id="previewOutput" style="margin-top:8px;max-height:180px;overflow:auto">[]</pre>
+            <p class="hint" id="imageLoadingHint" style="display:none">图片解析中</p>
           </div>
         </div>
         <p class="hint" id="statusText">未选择记录</p>
@@ -67,10 +68,31 @@
       let allRows = [];
       let page = 1;
       let previewRecipients = [];
+      let loadingTimer = null;
       function setStatus(text, isErr = false) {
         const el = document.getElementById("statusText");
         el.textContent = text;
         el.className = isErr ? "hint status-err" : "hint status-ok";
+      }
+      function setImageLoading(loading) {
+        const previewBtn = document.getElementById("imagePreviewBtn");
+        const importBtn = document.getElementById("imageImportBtn");
+        const hint = document.getElementById("imageLoadingHint");
+        previewBtn.disabled = loading;
+        importBtn.disabled = loading;
+        if (!loading) {
+          if (loadingTimer) clearInterval(loadingTimer);
+          loadingTimer = null;
+          hint.style.display = "none";
+          hint.textContent = "图片解析中";
+          return;
+        }
+        hint.style.display = "block";
+        let dots = 0;
+        loadingTimer = setInterval(() => {
+          dots = (dots + 1) % 4;
+          hint.textContent = `图片解析中${".".repeat(dots)}`;
+        }, 400);
       }
       function getPayload() {
         const name = document.getElementById("name").value.trim();
@@ -219,6 +241,7 @@
       };
       document.getElementById("imagePreviewBtn").onclick = async () => {
         try {
+          setImageLoading(true);
           const fileInput = document.getElementById("recipientImage");
           const file = fileInput.files && fileInput.files[0];
           if (!file) return setStatus("请先选择图片文件", true);
@@ -248,6 +271,8 @@
           setStatus(`图片识别完成，共 ${previewRecipients.length} 条，请确认后导入`);
         } catch (e) {
           setStatus(String(e), true);
+        } finally {
+          setImageLoading(false);
         }
       };
       loadData();
