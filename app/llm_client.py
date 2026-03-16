@@ -150,17 +150,31 @@ class LLMOrderParser:
         return digits[-11:] if len(digits) >= 11 else "00000000000"
 
     def _extract_name(self, text: str, phone: str) -> str:
-        without_phone = text.replace(phone, " ")
-        parts = [part.strip() for part in re.split(r"[，,;；]", without_phone) if part.strip()]
-        if len(parts) >= 2:
+        normalized = text.replace("\r\n", "\n")
+        line_with_phone = ""
+        for line in normalized.split("\n"):
+            if phone in line:
+                line_with_phone = line
+                break
+        candidate = line_with_phone if line_with_phone else normalized
+        candidate = candidate.replace(phone, " ")
+        parts = [part.strip() for part in re.split(r"[，,;；]", candidate) if part.strip()]
+        if parts:
             candidate = parts[-1]
-        else:
-            candidate = without_phone
-        matched = re.search(r"[\u4e00-\u9fff]{2,6}", candidate)
-        return matched.group(0) if matched else "待确认"
+        name_matches = re.findall(r"[\u4e00-\u9fff]{2,6}", candidate)
+        if name_matches:
+            return str(name_matches[-1])
+        return "待确认"
 
     def _extract_address_source(self, text: str, phone: str) -> str:
-        without_phone = text.replace(phone, " ")
+        normalized = text.replace("\r\n", "\n")
+        lines = [line.strip() for line in normalized.split("\n") if line.strip()]
+        for line in lines:
+            if phone in line:
+                continue
+            if any(token in line for token in ("省", "市", "区", "县", "街道", "镇", "路", "号")):
+                return line
+        without_phone = normalized.replace(phone, " ")
         parts = [part.strip() for part in re.split(r"[，,;；]", without_phone) if part.strip()]
         if parts:
             return parts[0]

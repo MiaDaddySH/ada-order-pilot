@@ -57,9 +57,11 @@ def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
     response = client.post("/api/v1/parse-order-input", json=payload)
     assert response.status_code == 200
     body = response.json()
+    assert body["recipient"]["name"] == "沈钦雨"
     assert body["recipient"]["province"] == "浙江省"
     assert body["recipient"]["city"] == "杭州市"
     assert body["recipient"]["district"] == "萧山区"
+    assert body["recipient"]["address_detail"] == "蜀山街道山水苑34-1-501"
     assert body["products"][0]["simple_code"] == "42604770514557"
     assert "乐温赞" in body["products"][0]["product_name"]
     assert body["products"][0]["quantity"] == 8
