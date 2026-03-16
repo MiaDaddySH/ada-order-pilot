@@ -197,32 +197,18 @@
       document.getElementById("createOrderBtn").onclick = async () => {
         try {
           const inputText = document.getElementById("inputText").value.trim();
-          const preview = await api("/api/v1/parse-order-input", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input_text: inputText }),
-          });
-          let idCardNo = (preview.recipient?.id_card_no || "").trim();
-          if (!idCardNo) {
-            const inputId = window.prompt("创建订单前需要收件人身份证号码，请输入：", "");
-            if (!inputId || !inputId.trim()) {
-              window.alert("未提供身份证号码，无法创建订单");
-              return;
-            }
-            idCardNo = inputId.trim();
-          }
           const data = await api("/api/v1/orders/from-input", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ input_text: inputText, recipient_id_card_no: idCardNo }),
+            body: JSON.stringify({ input_text: inputText }),
           });
           parseOutput.textContent = pretty(data);
           const source = data.parse_result?.parse_source || "-";
           parseSource.textContent = `解析来源：${source}`;
         } catch (e) {
           parseOutput.textContent = String(e);
-          if (String(e).includes("身份证号码")) {
-            window.alert("创建订单前需要补充收件人身份证号码");
+          if (String(e).includes("收件人信息不完整")) {
+            window.alert(String(e));
           }
           parseSource.textContent = "解析来源：-";
         }

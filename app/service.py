@@ -57,10 +57,12 @@ class OrderParseService:
         recipient_id_card_no: str | None = None,
     ) -> CreateOrderFromInputResponse:
         parsed = self.parse(input_text)
+        self._enrich_recipient_from_existing(parsed)
         if recipient_id_card_no and recipient_id_card_no.strip():
             parsed.recipient.id_card_no = recipient_id_card_no.strip()
-        if not parsed.recipient.id_card_no:
-            raise ValueError("缺少收件人身份证号码")
+        missing_fields = self._collect_missing_recipient_fields(parsed.recipient)
+        if missing_fields:
+            raise ValueError(f"收件人信息不完整，缺少: {','.join(missing_fields)}")
         unresolved_items = [item.product_name for item in parsed.products if item.simple_code is None]
         if unresolved_items:
             names = ",".join(unresolved_items)
@@ -79,6 +81,51 @@ class OrderParseService:
             recipient_created=recipient_created,
             parse_result=parsed,
         )
+
+    def _enrich_recipient_from_existing(self, parsed: ParseOrderResponse) -> None:
+        name = (parsed.recipient.name or "").strip()
+        if not name or name == "待确认":
+            return
+        existing = self.repository.find_recipient_by_name(name)
+        if existing is None:
+            return
+        should_hydrate = (
+            not parsed.recipient.phone
+            or parsed.recipient.phone == "00000000000"
+            or not parsed.recipient.province
+            or not parsed.recipient.city
+            or not parsed.recipient.district
+        )
+        if should_hydrate:
+            parsed.recipient.phone = str(existing.get("phone") or parsed.recipient.phone)
+            parsed.recipient.province = (str(existing.get("province") or "").strip() or None)
+            parsed.recipient.city = (str(existing.get("city") or "").strip() or None)
+            parsed.recipient.district = (str(existing.get("district") or "").strip() or None)
+            parsed.recipient.address_detail = str(existing.get("address_detail") or parsed.recipient.address_detail)
+            parsed.recipient.raw_address = str(existing.get("raw_address") or parsed.recipient.raw_address)
+            parsed.recipient.postcode = (str(existing.get("postcode") or "").strip() or None)
+        if not parsed.recipient.id_card_no:
+            parsed.recipient.id_card_no = (str(existing.get("id_card_no") or "").strip() or None)
+
+    def _collect_missing_recipient_fields(self, recipient: ParsedRecipient) -> list[str]:
+        missing: list[str] = []
+        if not recipient.name or recipient.name.strip() == "待确认":
+            missing.append("姓名")
+        if not recipient.phone or recipient.phone == "00000000000":
+            missing.append("手机号")
+        if not recipient.id_card_no:
+            missing.append("身份证号码")
+        if not recipient.province:
+            missing.append("省")
+        if not recipient.city:
+            missing.append("市")
+        if not recipient.district:
+            missing.append("区县")
+        if not recipient.address_detail:
+            missing.append("详细地址")
+        if not recipient.raw_address:
+            missing.append("原始地址")
+        return missing
 
     def list_products(self, keyword: str | None = None, include_inactive: bool = False) -> list[ProductCatalogItem]:
         return self.repository.list_products(keyword=keyword, include_inactive=include_inactive)

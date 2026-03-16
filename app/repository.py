@@ -139,6 +139,20 @@ class OrderRepository:
             connection.execute("DELETE FROM recipients WHERE id = ?", (recipient_id,))
             return True
 
+    def find_recipient_by_name(self, name: str) -> dict[str, object] | None:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode
+                FROM recipients
+                WHERE name = ?
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (name,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
     def batch_upsert_recipients(self, payloads: list[dict[str, Any]]) -> int:
         with get_connection(self.db_path) as connection:
             imported = 0

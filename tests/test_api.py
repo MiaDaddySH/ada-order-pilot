@@ -166,6 +166,43 @@ def test_create_order_from_input_requires_simple_code(tmp_path: Path) -> None:
     assert response.status_code == 422
 
 
+def test_create_order_from_input_reuses_recipient_by_name(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_order_by_name.db"
+    client = TestClient(app)
+    created_recipient = client.post(
+        "/api/v1/recipients",
+        json={
+            "name": "朱娜",
+            "phone": "13812345678",
+            "id_card_no": "320623198104030043",
+            "province": "广东省",
+            "city": "广州市",
+            "district": "花都区",
+            "address_detail": "庙南巷42号嘉汇城西区4栋",
+            "raw_address": "广东省广州市花都区庙南巷42号嘉汇城西区4栋",
+            "postcode": "510800",
+        },
+    )
+    assert created_recipient.status_code == 200
+    payload = {"input_text": "朱娜 HO2 4盒"}
+    created_order = client.post("/api/v1/orders/from-input", json=payload)
+    assert created_order.status_code == 200
+    body = created_order.json()
+    assert body["recipient_created"] is False
+    assert body["parse_result"]["recipient"]["name"] == "朱娜"
+    assert body["parse_result"]["recipient"]["phone"] == "13812345678"
+    assert body["parse_result"]["recipient"]["id_card_no"] == "320623198104030043"
+
+
+def test_create_order_from_input_reports_missing_recipient_fields(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_order_missing_recipient.db"
+    client = TestClient(app)
+    payload = {"input_text": "无名氏 HO2 2盒"}
+    response = client.post("/api/v1/orders/from-input", json=payload)
+    assert response.status_code == 422
+    assert "收件人信息不完整" in response.json()["detail"]
+
+
 def test_product_catalog_create_list_and_disable(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_products.db"
     client = TestClient(app)
