@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
+    parse_mode: str = "llm_only"
     db_path: str = "data/ada_order.db"
     recipient_template_path: str = "templates/收件人模板.xlsx"
     order_template_path: str = "templates/订单导入模板.xlsx"
@@ -43,8 +44,11 @@ class LLMOrderParser:
     settings: Settings
 
     def parse_order(self, text: str) -> LLMParseResult:
-        if not self.settings.llm_api_key:
+        mode = self.settings.parse_mode.lower().strip()
+        if mode == "fallback":
             return self._fallback_parse(text)
+        if not self.settings.llm_api_key:
+            raise RuntimeError("LLM_API_KEY 未配置，当前模式不允许规则兜底")
         try:
             client = OpenAI(
                 api_key=self.settings.llm_api_key,
@@ -68,8 +72,10 @@ class LLMOrderParser:
             if isinstance(payload, dict):
                 payload["parse_source"] = "llm"
             return LLMParseResult.model_validate(payload)
-        except Exception:
-            return self._fallback_parse(text)
+        except Exception as exc:
+            if mode == "llm_with_fallback":
+                return self._fallback_parse(text)
+            raise RuntimeError("LLM 解析失败，当前模式不允许规则兜底") from exc
 
     def _build_prompt(self, text: str) -> str:
         schema = {

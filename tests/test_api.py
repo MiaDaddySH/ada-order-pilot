@@ -7,12 +7,25 @@ from openpyxl import Workbook, load_workbook
 
 from app.main import app
 
+os.environ["PARSE_MODE"] = "fallback"
+
 
 def test_health() -> None:
     client = TestClient(app)
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_parse_order_input_llm_only_without_key_returns_503(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_llm_only.db"
+    os.environ["PARSE_MODE"] = "llm_only"
+    os.environ["LLM_API_KEY"] = ""
+    os.environ["LLM_BASE_URL"] = ""
+    client = TestClient(app)
+    response = client.post("/api/v1/parse-order-input", json={"input_text": "测试地址 王明 13800138000"})
+    assert response.status_code == 503
+    os.environ["PARSE_MODE"] = "fallback"
 
 
 def test_index_page() -> None:

@@ -65,7 +65,10 @@ def health() -> dict[str, str]:
 @app.post("/api/v1/parse-order-input", response_model=ParseOrderResponse)
 def parse_order_input(payload: ParseOrderRequest) -> ParseOrderResponse:
     service = OrderParseService()
-    return service.parse(payload.input_text)
+    try:
+        return service.parse(payload.input_text)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/orders/from-input", response_model=CreateOrderFromInputResponse)
@@ -75,6 +78,8 @@ def create_order_from_input(payload: ParseOrderRequest) -> CreateOrderFromInputR
         return service.create_order_from_input(payload.input_text)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/orders", response_model=list[OrderView])
