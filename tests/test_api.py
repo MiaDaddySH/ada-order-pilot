@@ -100,7 +100,7 @@ def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
     assert body["recipient"]["district"] == "萧山区"
     assert body["recipient"]["address_detail"] == "蜀山街道山水苑34-1-501"
     assert body["parse_source"] == "fallback"
-    assert body["products"][0]["simple_code"] is None
+    assert body["products"][0]["simple_code"] is not None
     assert body["products"][0]["quantity"] == 8
 
 
@@ -115,7 +115,7 @@ def test_parse_order_input_with_plus_symbol_for_lewenzan(tmp_path: Path) -> None
     response = client.post("/api/v1/parse-order-input", json=payload)
     assert response.status_code == 200
     body = response.json()
-    assert body["products"][0]["simple_code"] is None
+    assert body["products"][0]["simple_code"] is not None
     assert body["products"][0]["stage"] == "6+"
     assert body["products"][0]["quantity"] == 8
 
@@ -136,6 +136,36 @@ def test_parse_order_input_with_inline_phone_and_address_label(tmp_path: Path) -
     assert body["recipient"]["city"] == "南通市"
     assert body["recipient"]["district"] == "如东县"
     assert "泰山路22号" in body["recipient"]["address_detail"]
+
+
+def test_parse_order_input_reuses_recipient_for_preview(tmp_path: Path) -> None:
+    os.environ["DB_PATH"] = str(tmp_path) + "/test_parse_with_recipient_lookup.db"
+    client = TestClient(app)
+    created_recipient = client.post(
+        "/api/v1/recipients",
+        json={
+            "name": "朱娜",
+            "phone": "13812345678",
+            "id_card_no": "320623198104030043",
+            "province": "广东省",
+            "city": "广州市",
+            "district": "花都区",
+            "address_detail": "庙南巷42号嘉汇城西区4栋",
+            "raw_address": "广东省广州市花都区庙南巷42号嘉汇城西区4栋",
+            "postcode": "510800",
+        },
+    )
+    assert created_recipient.status_code == 200
+    response = client.post("/api/v1/parse-order-input", json={"input_text": "朱娜 小狮子 牛 4 罐"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recipient"]["name"] == "朱娜"
+    assert body["recipient"]["phone"] == "13812345678"
+    assert body["recipient"]["id_card_no"] == "320623198104030043"
+    assert body["recipient"]["province"] == "广东省"
+    assert body["recipient"]["city"] == "广州市"
+    assert body["recipient"]["district"] == "花都区"
+    assert body["products"][0]["simple_code"] is not None
 
 
 def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
@@ -214,13 +244,14 @@ def test_create_order_from_input_reuses_recipient_for_short_text_name(tmp_path: 
         },
     )
     assert created_recipient.status_code == 200
-    payload = {"input_text": "朱娜 小狮子 牛 4 罐 HO2"}
+    payload = {"input_text": "朱娜 小狮子 牛 4 罐"}
     created_order = client.post("/api/v1/orders/from-input", json=payload)
     assert created_order.status_code == 200
     body = created_order.json()
     assert body["recipient_created"] is False
     assert body["parse_result"]["recipient"]["name"] == "朱娜"
     assert body["parse_result"]["recipient"]["id_card_no"] == "320623198104030043"
+    assert body["parse_result"]["products"][0]["simple_code"] is not None
     assert body["recipient_match"]["matched_name"] == "朱娜"
 
 
@@ -472,26 +503,6 @@ def test_management_crud_apis(tmp_path: Path) -> None:
     )
     assert sender_updated.status_code == 200
     assert sender_updated.json()["name"] == "寄件人B"
-    sender_batch = client.post(
-        "/api/v1/senders/batch-upsert",
-        json={
-            "senders": [
-                {
-                    "name": "批量寄件人A",
-                    "phone": "13900005555",
-                    "street": "Third St",
-                    "house_no": "10",
-                    "postcode": "70300",
-                    "city": "Munich",
-                    "country_code": "DE",
-                    "is_default": False,
-                }
-            ]
-        },
-    )
-    assert sender_batch.status_code == 200
-    assert sender_batch.json()["imported_count"] == 1
-
     assert client.delete(f"/api/v1/orders/{order_id}").status_code == 200
     assert client.delete(f"/api/v1/recipients/{recipient_id}").status_code == 200
     assert client.delete(f"/api/v1/products/{product_id}").status_code == 200

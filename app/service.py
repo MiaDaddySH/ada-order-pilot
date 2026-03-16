@@ -17,8 +17,6 @@ from app.schemas import (
     RecipientImportImageResponse,
     RecipientItem,
     RecipientUpsertRequest,
-    SenderBatchUpsertRequest,
-    SenderImportImageResponse,
     SenderProfileItem,
     SenderProfileUpsertRequest,
     UpdateProductRequest,
@@ -38,17 +36,20 @@ class OrderParseService:
         result = self.parser.parse_order(input_text)
         recipient = ParsedRecipient.model_validate(result.recipient)
         products = [ParsedProduct.model_validate(item) for item in result.products]
-        unresolved = any(item.simple_code is None for item in products)
-        confidence = result.confidence
-        if unresolved:
-            confidence = min(confidence, 0.5)
-        return ParseOrderResponse(
+        parsed = ParseOrderResponse(
             recipient=recipient,
             products=products,
-            confidence=confidence,
-            needs_review=result.needs_review or unresolved,
+            confidence=result.confidence,
+            needs_review=result.needs_review,
             parse_source=result.parse_source,
         )
+        self._resolve_missing_product_codes(parsed=parsed, input_text=input_text)
+        self._enrich_recipient_from_existing(parsed, input_text)
+        unresolved = any(item.simple_code is None for item in parsed.products)
+        if unresolved:
+            parsed.confidence = min(parsed.confidence, 0.5)
+        parsed.needs_review = parsed.needs_review or unresolved
+        return parsed
 
     def create_order_from_input(
         self,
@@ -56,6 +57,7 @@ class OrderParseService:
         recipient_id_card_no: str | None = None,
     ) -> CreateOrderFromInputResponse:
         parsed = self.parse(input_text)
+        self._resolve_missing_product_codes(parsed=parsed, input_text=input_text)
         recipient_match = self._enrich_recipient_from_existing(parsed, input_text)
         if recipient_id_card_no and recipient_id_card_no.strip():
             parsed.recipient.id_card_no = recipient_id_card_no.strip()
@@ -81,6 +83,19 @@ class OrderParseService:
             parse_result=parsed,
             recipient_match=recipient_match,
         )
+
+    def _resolve_missing_product_codes(self, parsed: ParseOrderResponse, input_text: str) -> None:
+        for item in parsed.products:
+            if item.simple_code:
+                continue
+            resolved = self.repository.resolve_product_code(
+                source_text=input_text,
+                product_name=item.product_name,
+                brand=item.brand,
+                stage=item.stage,
+            )
+            if resolved:
+                item.simple_code = resolved
 
     def _enrich_recipient_from_existing(self, parsed: ParseOrderResponse, input_text: str) -> dict[str, object] | None:
         name = (parsed.recipient.name or "").strip()
@@ -349,33 +364,6 @@ class OrderParseService:
 
     def delete_sender(self, sender_id: int) -> bool:
         return self.repository.delete_sender_profile(sender_id)
-
-    def batch_upsert_senders(self, payload: SenderBatchUpsertRequest) -> int:
-        items = []
-        for item in payload.senders:
-            data = item.model_dump()
-            data["name"] = data["name"].strip()
-            data["phone"] = data["phone"].strip()
-            data["street"] = data["street"].strip()
-            data["house_no"] = data["house_no"].strip()
-            data["postcode"] = data["postcode"].strip()
-            data["city"] = data["city"].strip()
-            data["country_code"] = data["country_code"].strip().upper()
-            items.append(data)
-        return self.repository.batch_upsert_sender_profiles(items)
-
-    def import_senders_from_image(self, image_bytes: bytes, mime_type: str) -> SenderImportImageResponse:
-        parsed = self.parser.parse_senders_from_image(image_bytes=image_bytes, mime_type=mime_type)
-        if not parsed:
-            return SenderImportImageResponse(imported_count=0, senders=[])
-        imported_count = self.repository.batch_upsert_sender_profiles(parsed)
-        rows = self.repository.list_sender_profiles()
-        sender_map = {(str(row["name"]), str(row["phone"])): row for row in rows}
-        imported_rows = [sender_map[(str(item["name"]), str(item["phone"]))] for item in parsed if (str(item["name"]), str(item["phone"])) in sender_map]
-        return SenderImportImageResponse(
-            imported_count=imported_count,
-            senders=[SenderProfileItem.model_validate(row) for row in imported_rows],
-        )
 
     def export_recipients_template(self) -> str:
         recipients = self.repository.list_recipients_for_export()

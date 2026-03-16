@@ -43,10 +43,6 @@ class LLMParseResult(BaseModel):
     parse_source: str
 
 
-class LLMSenderImportResult(BaseModel):
-    senders: list[dict[str, Any]]
-
-
 class LLMRecipientImportResult(BaseModel):
     recipients: list[dict[str, Any]]
 
@@ -138,62 +134,6 @@ class LLMOrderParser:
             "如果信息不确定，needs_review=true，confidence降低。"
             f"文本={text}"
         )
-
-    def parse_senders_from_image(self, image_bytes: bytes, mime_type: str) -> list[dict[str, Any]]:
-        client = self._get_llm_client()
-        data = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = (
-            "你是寄件人信息提取器。"
-            "从图片中提取寄件人列表，并输出 JSON 对象，字段为 senders。"
-            "每个 sender 包含 name,phone,street,house_no,postcode,city,country_code,is_default。"
-            "如果无法确定国家简称，默认填写 DE。如果是第一个寄件人可设 is_default=true，其他 false。"
-            "只输出 JSON，不要其他文本。"
-        )
-        response = client.chat.completions.create(
-            model=self.settings.llm_model,
-            messages=[
-                {"role": "system", "content": "你是严格 JSON 输出助手。"},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{data}"},
-                        },
-                    ],
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
-        content = response.choices[0].message.content or "{}"
-        payload = json.loads(content)
-        parsed = LLMSenderImportResult.model_validate(payload)
-        cleaned: list[dict[str, Any]] = []
-        for sender in parsed.senders:
-            name = str(sender.get("name") or "").strip()
-            phone = str(sender.get("phone") or "").strip()
-            street = str(sender.get("street") or "").strip()
-            house_no = str(sender.get("house_no") or "").strip()
-            postcode = str(sender.get("postcode") or "").strip()
-            city = str(sender.get("city") or "").strip()
-            country_code = str(sender.get("country_code") or "DE").strip().upper()
-            if not all([name, phone, street, house_no, postcode, city, country_code]):
-                continue
-            cleaned.append(
-                {
-                    "name": name,
-                    "phone": phone,
-                    "street": street,
-                    "house_no": house_no,
-                    "postcode": postcode,
-                    "city": city,
-                    "country_code": country_code,
-                    "is_default": bool(sender.get("is_default", False)),
-                }
-            )
-        return cleaned
 
     def parse_recipients_from_image(self, image_bytes: bytes, mime_type: str) -> list[dict[str, Any]]:
         client = self._get_llm_client()

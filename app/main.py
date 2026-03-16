@@ -25,9 +25,6 @@ from app.schemas import (
     RecipientImportImageResponse,
     RecipientItem,
     RecipientUpsertRequest,
-    SenderBatchUpsertRequest,
-    SenderImportImageRequest,
-    SenderImportImageResponse,
     SenderProfileItem,
     SenderProfileUpsertRequest,
     UpdateProductRequest,
@@ -274,28 +271,6 @@ def list_senders() -> list[SenderProfileItem]:
 def create_sender(payload: SenderProfileUpsertRequest) -> SenderProfileItem:
     service = get_service()
     return service.create_sender(payload)
-
-
-@app.post("/api/v1/senders/batch-upsert")
-def batch_upsert_senders(payload: SenderBatchUpsertRequest) -> dict[str, int]:
-    service = get_service()
-    imported_count = service.batch_upsert_senders(payload)
-    return {"imported_count": imported_count}
-
-
-@app.post("/api/v1/senders/import-image", response_model=SenderImportImageResponse)
-def import_senders_by_image(payload: SenderImportImageRequest) -> SenderImportImageResponse:
-    if not payload.mime_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="仅支持图片文件")
-    try:
-        content = base64.b64decode(payload.image_base64)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="图片base64格式不正确") from exc
-    service = get_service()
-    try:
-        return service.import_senders_from_image(image_bytes=content, mime_type=payload.mime_type)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.put("/api/v1/senders/{sender_id}", response_model=SenderProfileItem)
