@@ -1,8 +1,9 @@
 import os
+from io import BytesIO
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from app.main import app
 
@@ -141,6 +142,9 @@ def test_export_templates(tmp_path: Path) -> None:
     assert recipients_file.content[:2] == b"PK"
     assert orders_file.content[:2] == b"PK"
     assert orders_data_file.content[:2] == b"PK"
+    workbook = load_workbook(BytesIO(orders_data_file.content))
+    worksheet = workbook[workbook.sheetnames[0]]
+    assert worksheet.cell(row=2, column=9).value not in (None, "")
 
 
 def _create_recipient_template(path: Path) -> None:

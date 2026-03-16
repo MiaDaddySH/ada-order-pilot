@@ -80,7 +80,7 @@ def export_recipients_template() -> FileResponse:
 
 @app.get("/api/v1/export/orders-template")
 def export_orders_template(
-    status: str | None = "ready_to_upload",
+    status: str | None = None,
     recent_days: int | None = None,
     limit: int | None = None,
 ) -> FileResponse:
@@ -91,7 +91,7 @@ def export_orders_template(
 
 @app.get("/api/v1/export/orders")
 def export_orders(
-    status: str | None = "ready_to_upload",
+    status: str | None = None,
     recent_days: int | None = None,
     limit: int | None = None,
 ) -> FileResponse:
