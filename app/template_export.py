@@ -83,7 +83,7 @@ class TemplateExporter:
             rows.append(
                 {
                     "*姓名": item.get("name"),
-                    "*身份证号码": "",
+                    "*身份证号码": item.get("id_card_no"),
                     "*电话国际区号": "86",
                     "*电话号码": item.get("phone"),
                     "*省": item.get("province"),
@@ -121,7 +121,7 @@ class TemplateExporter:
                 "寄件人城市": sender_city,
                 "寄件人国家简称": sender_country_code,
                 "收件人姓名": order.get("recipient_name"),
-                "身份证号": "",
+                "身份证号": order.get("id_card_no"),
                 "手机号码": order.get("recipient_phone"),
                 "收件人国家简称": self.settings.recipient_country_code,
                 "省": order.get("province"),

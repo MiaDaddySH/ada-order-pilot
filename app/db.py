@@ -44,6 +44,7 @@ def init_db(db_path: str) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 phone TEXT NOT NULL,
+                id_card_no TEXT,
                 province TEXT,
                 city TEXT,
                 district TEXT,
@@ -107,6 +108,10 @@ def init_db(db_path: str) -> None:
         column_names = {str(row["name"]) for row in columns}
         if "simple_code" not in column_names:
             connection.execute("ALTER TABLE order_items ADD COLUMN simple_code TEXT")
+        recipient_columns = connection.execute("PRAGMA table_info(recipients)").fetchall()
+        recipient_column_names = {str(row["name"]) for row in recipient_columns}
+        if "id_card_no" not in recipient_column_names:
+            connection.execute("ALTER TABLE recipients ADD COLUMN id_card_no TEXT")
         for product_name, simple_code in PRODUCT_ROWS:
             connection.execute(
                 """

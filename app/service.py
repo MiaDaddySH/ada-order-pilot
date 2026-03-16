@@ -34,19 +34,7 @@ class OrderParseService:
         result = self.parser.parse_order(input_text)
         recipient = ParsedRecipient.model_validate(result.recipient)
         products = [ParsedProduct.model_validate(item) for item in result.products]
-        unresolved = False
-        for product in products:
-            resolved = self._resolve_product_code(input_text, product)
-            product.simple_code = resolved
-            if resolved is None:
-                unresolved = True
-                continue
-            catalog_product = self.repository.get_active_product_by_code(resolved)
-            if catalog_product is not None:
-                catalog_name, catalog_brand = catalog_product
-                product.product_name = catalog_name
-                if catalog_brand:
-                    product.brand = catalog_brand
+        unresolved = any(item.simple_code is None for item in products)
         confidence = result.confidence
         if unresolved:
             confidence = min(confidence, 0.5)
@@ -58,8 +46,16 @@ class OrderParseService:
             parse_source=result.parse_source,
         )
 
-    def create_order_from_input(self, input_text: str) -> CreateOrderFromInputResponse:
+    def create_order_from_input(
+        self,
+        input_text: str,
+        recipient_id_card_no: str | None = None,
+    ) -> CreateOrderFromInputResponse:
         parsed = self.parse(input_text)
+        if recipient_id_card_no and recipient_id_card_no.strip():
+            parsed.recipient.id_card_no = recipient_id_card_no.strip()
+        if not parsed.recipient.id_card_no:
+            raise ValueError("缺少收件人身份证号码")
         unresolved_items = [item.product_name for item in parsed.products if item.simple_code is None]
         if unresolved_items:
             names = ",".join(unresolved_items)
@@ -77,16 +73,6 @@ class OrderParseService:
             recipient_id=recipient_id,
             recipient_created=recipient_created,
             parse_result=parsed,
-        )
-
-    def _resolve_product_code(self, input_text: str, product: ParsedProduct) -> str | None:
-        if product.simple_code and self.repository.product_code_exists(product.simple_code):
-            return product.simple_code
-        return self.repository.resolve_product_code(
-            source_text=input_text,
-            product_name=product.product_name,
-            brand=product.brand,
-            stage=product.stage,
         )
 
     def list_products(self, keyword: str | None = None, include_inactive: bool = False) -> list[ProductCatalogItem]:

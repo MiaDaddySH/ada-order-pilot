@@ -27,16 +27,22 @@ class OrderRepository:
                 (recipient.phone, recipient.name, recipient.address_detail),
             ).fetchone()
             if row is not None:
+                if recipient.id_card_no:
+                    connection.execute(
+                        "UPDATE recipients SET id_card_no = COALESCE(id_card_no, ?) WHERE id = ?",
+                        (recipient.id_card_no, int(row["id"])),
+                    )
                 return int(row["id"]), False
             cursor = connection.execute(
                 """
                 INSERT INTO recipients
-                (name, phone, province, city, district, address_detail, raw_address, postcode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     recipient.name,
                     recipient.phone,
+                    recipient.id_card_no,
                     recipient.province,
                     recipient.city,
                     recipient.district,
@@ -54,7 +60,7 @@ class OrderRepository:
         with get_connection(self.db_path) as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                SELECT id, name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode
                 FROM recipients
                 ORDER BY id DESC
                 """
@@ -66,12 +72,13 @@ class OrderRepository:
             cursor = connection.execute(
                 """
                 INSERT INTO recipients
-                (name, phone, province, city, district, address_detail, raw_address, postcode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     payload["name"],
                     payload["phone"],
+                    payload.get("id_card_no"),
                     payload.get("province"),
                     payload.get("city"),
                     payload.get("district"),
@@ -85,7 +92,7 @@ class OrderRepository:
                 raise RuntimeError("failed to create recipient")
             row = connection.execute(
                 """
-                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                SELECT id, name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode
                 FROM recipients WHERE id = ?
                 """,
                 (int(recipient_id),),
@@ -99,12 +106,13 @@ class OrderRepository:
             connection.execute(
                 """
                 UPDATE recipients
-                SET name = ?, phone = ?, province = ?, city = ?, district = ?, address_detail = ?, raw_address = ?, postcode = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, phone = ?, id_card_no = ?, province = ?, city = ?, district = ?, address_detail = ?, raw_address = ?, postcode = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
                 (
                     payload["name"],
                     payload["phone"],
+                    payload.get("id_card_no"),
                     payload.get("province"),
                     payload.get("city"),
                     payload.get("district"),
@@ -116,7 +124,7 @@ class OrderRepository:
             )
             row = connection.execute(
                 """
-                SELECT id, name, phone, province, city, district, address_detail, raw_address, postcode
+                SELECT id, name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode
                 FROM recipients WHERE id = ?
                 """,
                 (recipient_id,),
@@ -801,7 +809,7 @@ class OrderRepository:
         with get_connection(self.db_path) as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, phone, province, city, district, address_detail, postcode
+                SELECT id, name, phone, id_card_no, province, city, district, address_detail, postcode
                 FROM recipients
                 ORDER BY id ASC
                 """
@@ -823,6 +831,7 @@ class OrderRepository:
                     o.created_at AS created_at,
                     r.name AS recipient_name,
                     r.phone AS recipient_phone,
+                    r.id_card_no AS id_card_no,
                     r.province AS province,
                     r.city AS city,
                     r.district AS district,
@@ -858,6 +867,7 @@ class OrderRepository:
                         "order_status": str(row["order_status"]),
                         "recipient_name": str(row["recipient_name"]),
                         "recipient_phone": str(row["recipient_phone"]),
+                        "id_card_no": str(row["id_card_no"] or ""),
                         "province": str(row["province"] or ""),
                         "city": str(row["city"] or ""),
                         "district": str(row["district"] or ""),

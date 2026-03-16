@@ -19,6 +19,7 @@
         <div class="grid-4">
           <input id="name" placeholder="姓名（必填）" />
           <input id="phone" placeholder="手机号（必填）" />
+          <input id="idCardNo" placeholder="身份证号码（建议填写）" />
           <input id="province" placeholder="省" />
           <input id="city" placeholder="市" />
           <input id="district" placeholder="区" />
@@ -68,6 +69,7 @@
         return {
           name,
           phone,
+          id_card_no: document.getElementById("idCardNo").value.trim() || null,
           province: document.getElementById("province").value.trim() || null,
           city: document.getElementById("city").value.trim() || null,
           district: document.getElementById("district").value.trim() || null,
@@ -79,6 +81,7 @@
       function fillForm(item) {
         document.getElementById("name").value = item.name || "";
         document.getElementById("phone").value = item.phone || "";
+        document.getElementById("idCardNo").value = item.id_card_no || "";
         document.getElementById("province").value = item.province || "";
         document.getElementById("city").value = item.city || "";
         document.getElementById("district").value = item.district || "";

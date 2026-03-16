@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class ParseOrderRequest(BaseModel):
     input_text: str = Field(min_length=1, max_length=2000)
+    recipient_id_card_no: str | None = Field(default=None, min_length=6, max_length=32)
 
 
 class ParsedProduct(BaseModel):
@@ -17,6 +18,7 @@ class ParsedProduct(BaseModel):
 class ParsedRecipient(BaseModel):
     name: str
     phone: str
+    id_card_no: str | None = None
     province: str | None = None
     city: str | None = None
     district: str | None = None
@@ -53,6 +55,7 @@ class RecipientItem(BaseModel):
     id: int
     name: str
     phone: str
+    id_card_no: str | None = None
     province: str | None = None
     city: str | None = None
     district: str | None = None
@@ -64,6 +67,7 @@ class RecipientItem(BaseModel):
 class RecipientUpsertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     phone: str = Field(min_length=1, max_length=30)
+    id_card_no: str | None = Field(default=None, min_length=6, max_length=32)
     province: str | None = None
     city: str | None = None
     district: str | None = None

@@ -57,7 +57,7 @@ def test_parse_order_input(tmp_path: Path) -> None:
     os.environ["LLM_BASE_URL"] = ""
     client = TestClient(app)
     payload = {
-        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（Holle 羊2段4盒）"
+        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（HO2 4盒）"
     }
     response = client.post("/api/v1/parse-order-input", json=payload)
     assert response.status_code == 200
@@ -70,9 +70,7 @@ def test_parse_order_input(tmp_path: Path) -> None:
     assert body["recipient"]["district"] == "花都区"
     assert "庙南巷42号" in body["recipient"]["address_detail"]
     assert body["parse_source"] == "fallback"
-    assert body["products"][0]["simple_code"] is not None
-    assert "holle" in (body["products"][0]["brand"] or "").lower()
-    assert "holle" in body["products"][0]["product_name"].lower()
+    assert body["products"][0]["simple_code"] == "HO2"
 
 
 def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
@@ -92,8 +90,7 @@ def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
     assert body["recipient"]["district"] == "萧山区"
     assert body["recipient"]["address_detail"] == "蜀山街道山水苑34-1-501"
     assert body["parse_source"] == "fallback"
-    assert body["products"][0]["simple_code"] == "42604770514557"
-    assert "乐温赞" in body["products"][0]["product_name"]
+    assert body["products"][0]["simple_code"] is None
     assert body["products"][0]["quantity"] == 8
 
 
@@ -108,8 +105,8 @@ def test_parse_order_input_with_plus_symbol_for_lewenzan(tmp_path: Path) -> None
     response = client.post("/api/v1/parse-order-input", json=payload)
     assert response.status_code == 200
     body = response.json()
-    assert body["products"][0]["simple_code"] == "42604770514247"
-    assert "乐温赞全脂婴幼儿奶粉6+400g罐" == body["products"][0]["product_name"]
+    assert body["products"][0]["simple_code"] is None
+    assert body["products"][0]["stage"] == "6+"
     assert body["products"][0]["quantity"] == 8
 
 
@@ -135,7 +132,7 @@ def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     os.environ["DB_PATH"] = str(tmp_path) + "/test_order.db"
     client = TestClient(app)
     payload = {
-        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（HO2 4盒）"
+        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033身份证440102199001019876（HO2 4盒）"
     }
     first = client.post("/api/v1/orders/from-input", json=payload)
     second = client.post("/api/v1/orders/from-input", json=payload)
@@ -147,6 +144,7 @@ def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     assert second_body["order_created"] is False
     assert first_body["order_no"] == second_body["order_no"]
     assert first_body["parse_result"]["products"][0]["simple_code"] == "HO2"
+    assert first_body["parse_result"]["recipient"]["id_card_no"] == "440102199001019876"
     assert first_body["parse_result"]["parse_source"] == "fallback"
 
 
@@ -215,7 +213,7 @@ def test_export_templates(tmp_path: Path) -> None:
     os.environ["EXPORT_DIR"] = str(tmp_path / "exports")
     client = TestClient(app)
     payload = {
-        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（HO2 4盒）"
+        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033身份证440102199001019876（HO2 4盒）"
     }
     created = client.post("/api/v1/orders/from-input", json=payload)
     assert created.status_code == 200

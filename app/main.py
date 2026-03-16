@@ -75,7 +75,10 @@ def parse_order_input(payload: ParseOrderRequest) -> ParseOrderResponse:
 def create_order_from_input(payload: ParseOrderRequest) -> CreateOrderFromInputResponse:
     service = OrderParseService()
     try:
-        return service.create_order_from_input(payload.input_text)
+        return service.create_order_from_input(
+            payload.input_text,
+            recipient_id_card_no=payload.recipient_id_card_no,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:

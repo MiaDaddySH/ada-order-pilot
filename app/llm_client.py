@@ -101,6 +101,7 @@ class LLMOrderParser:
             "recipient": {
                 "name": "string",
                 "phone": "string",
+                "id_card_no": "string|null",
                 "province": "string|null",
                 "city": "string|null",
                 "district": "string|null",
@@ -133,6 +134,8 @@ class LLMOrderParser:
         normalized_text = text.replace("➕", "+").replace("＋", "+")
         cleaned_text = self._strip_product_segment(text)
         phone = self._extract_phone(cleaned_text)
+        id_card_match = re.search(r"(?<!\d)(\d{17}[\dXx]|\d{15})(?!\d)", normalized_text)
+        id_card_no = id_card_match.group(1).upper() if id_card_match else None
         recipient_name = self._extract_name(cleaned_text, phone)
         address_source = self._extract_address_source(cleaned_text, phone)
         province, city, district, address_detail = self._split_address(address_source)
@@ -141,15 +144,24 @@ class LLMOrderParser:
         unit = quantity_match.group(2) if quantity_match else "盒"
         stage_match = re.search(r"(pre|PRE|\d+\+?段|\d+\+)", normalized_text)
         stage = stage_match.group(1) if stage_match else None
-        simple_code_match = re.search(
-            r"(?<![0-9A-Za-z])([A-Za-z]{1,6}\d\+?|[0-9]{10,})(?![0-9A-Za-z])",
-            normalized_text,
-        )
-        simple_code = simple_code_match.group(1) if simple_code_match else None
+        simple_code: str | None = None
+        alpha_code_match = re.search(r"(?<![0-9A-Za-z])([A-Za-z]{1,6}\d\+?)(?![0-9A-Za-z])", normalized_text)
+        if alpha_code_match:
+            simple_code = alpha_code_match.group(1)
+        else:
+            for candidate_match in re.finditer(r"(?<![0-9A-Za-z])([0-9]{10,})(?![0-9A-Za-z])", normalized_text):
+                candidate = candidate_match.group(1)
+                if candidate == phone:
+                    continue
+                if id_card_no and candidate == id_card_no:
+                    continue
+                simple_code = candidate
+                break
         return LLMParseResult(
             recipient={
                 "name": recipient_name,
                 "phone": phone,
+                "id_card_no": id_card_no,
                 "province": province,
                 "city": city,
                 "district": district,
