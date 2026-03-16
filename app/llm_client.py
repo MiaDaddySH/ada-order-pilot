@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,6 +70,7 @@ class LLMOrderParser:
                     "stage": "string|null",
                     "quantity": "int >=1",
                     "unit": "string",
+                    "simple_code": "string|null",
                 }
             ],
             "confidence": "float 0~1",
@@ -77,6 +79,7 @@ class LLMOrderParser:
         return (
             "从下面文本提取收件人和商品信息，按给定 schema 返回。"
             f"schema={json.dumps(schema, ensure_ascii=False)};"
+            "如果文本里出现商品简易代码，放入simple_code字段。"
             "如果信息不确定，needs_review=true，confidence降低。"
             f"文本={text}"
         )
@@ -84,6 +87,13 @@ class LLMOrderParser:
     def _fallback_parse(self, text: str) -> LLMParseResult:
         digits = "".join(ch for ch in text if ch.isdigit())
         phone = digits[-11:] if len(digits) >= 11 else "00000000000"
+        quantity_match = re.search(r"(\d+)\s*(盒|罐|袋|听)", text)
+        quantity = int(quantity_match.group(1)) if quantity_match else 1
+        unit = quantity_match.group(2) if quantity_match else "盒"
+        stage_match = re.search(r"(pre|PRE|\d+\+?段|\d+\+)", text)
+        stage = stage_match.group(1) if stage_match else None
+        simple_code_match = re.search(r"(?<![0-9A-Za-z])([A-Za-z]{1,6}\d\+?|[0-9]{10,})(?![0-9A-Za-z])", text)
+        simple_code = simple_code_match.group(1) if simple_code_match else None
         return LLMParseResult(
             recipient={
                 "name": "待确认",
@@ -98,10 +108,11 @@ class LLMOrderParser:
             products=[
                 {
                     "brand": None,
-                    "product_name": "待确认",
-                    "stage": None,
-                    "quantity": 1,
-                    "unit": "盒",
+                    "product_name": text,
+                    "stage": stage,
+                    "quantity": quantity,
+                    "unit": unit,
+                    "simple_code": simple_code,
                 }
             ],
             confidence=0.2,

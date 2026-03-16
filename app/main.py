@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from app.schemas import CreateOrderFromInputResponse, ParseOrderRequest, ParseOrderResponse
 from app.service import OrderParseService
@@ -20,4 +20,7 @@ def parse_order_input(payload: ParseOrderRequest) -> ParseOrderResponse:
 @app.post("/api/v1/orders/from-input", response_model=CreateOrderFromInputResponse)
 def create_order_from_input(payload: ParseOrderRequest) -> CreateOrderFromInputResponse:
     service = OrderParseService()
-    return service.create_order_from_input(payload.input_text)
+    try:
+        return service.create_order_from_input(payload.input_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

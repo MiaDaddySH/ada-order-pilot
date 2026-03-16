@@ -11,6 +11,7 @@ class ParsedProduct(BaseModel):
     stage: str | None = None
     quantity: int = Field(ge=1, le=999)
     unit: str = "盒"
+    simple_code: str | None = None
 
 
 class ParsedRecipient(BaseModel):

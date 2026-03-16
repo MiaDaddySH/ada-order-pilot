@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+from app.product_seed import PRODUCT_ROWS
+
 
 def ensure_parent_dir(db_path: str) -> None:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -15,6 +17,21 @@ def get_connection(db_path: str) -> sqlite3.Connection:
 
 def init_db(db_path: str) -> None:
     with get_connection(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS product_catalog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT NOT NULL UNIQUE,
+                simple_code TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_product_catalog_code
+            ON product_catalog(simple_code)
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS recipients (
@@ -54,6 +71,7 @@ def init_db(db_path: str) -> None:
             CREATE TABLE IF NOT EXISTS order_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_id INTEGER NOT NULL,
+                simple_code TEXT NOT NULL,
                 brand TEXT,
                 product_name TEXT NOT NULL,
                 stage TEXT,
@@ -63,3 +81,15 @@ def init_db(db_path: str) -> None:
             )
             """
         )
+        columns = connection.execute("PRAGMA table_info(order_items)").fetchall()
+        column_names = {str(row["name"]) for row in columns}
+        if "simple_code" not in column_names:
+            connection.execute("ALTER TABLE order_items ADD COLUMN simple_code TEXT")
+        for product_name, simple_code in PRODUCT_ROWS:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO product_catalog (product_name, simple_code)
+                VALUES (?, ?)
+                """,
+                (product_name, simple_code),
+            )

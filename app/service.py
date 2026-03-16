@@ -20,15 +20,28 @@ class OrderParseService:
         result = self.parser.parse_order(input_text)
         recipient = ParsedRecipient.model_validate(result.recipient)
         products = [ParsedProduct.model_validate(item) for item in result.products]
+        unresolved = False
+        for product in products:
+            resolved = self._resolve_product_code(input_text, product)
+            product.simple_code = resolved
+            if resolved is None:
+                unresolved = True
+        confidence = result.confidence
+        if unresolved:
+            confidence = min(confidence, 0.5)
         return ParseOrderResponse(
             recipient=recipient,
             products=products,
-            confidence=result.confidence,
-            needs_review=result.needs_review,
+            confidence=confidence,
+            needs_review=result.needs_review or unresolved,
         )
 
     def create_order_from_input(self, input_text: str) -> CreateOrderFromInputResponse:
         parsed = self.parse(input_text)
+        unresolved_items = [item.product_name for item in parsed.products if item.simple_code is None]
+        if unresolved_items:
+            names = ",".join(unresolved_items)
+            raise ValueError(f"未匹配到商品简易代码: {names}")
         recipient_id, recipient_created = self.repository.upsert_recipient(parsed)
         order_no, order_status, order_created = self.repository.create_or_get_order(
             recipient_id=recipient_id,
@@ -42,4 +55,14 @@ class OrderParseService:
             recipient_id=recipient_id,
             recipient_created=recipient_created,
             parse_result=parsed,
+        )
+
+    def _resolve_product_code(self, input_text: str, product: ParsedProduct) -> str | None:
+        if product.simple_code and self.repository.product_code_exists(product.simple_code):
+            return product.simple_code
+        return self.repository.resolve_product_code(
+            source_text=input_text,
+            product_name=product.product_name,
+            brand=product.brand,
+            stage=product.stage,
         )

@@ -1,4 +1,5 @@
 import hashlib
+import re
 import uuid
 
 from app.db import get_connection
@@ -83,11 +84,12 @@ class OrderRepository:
                 connection.execute(
                     """
                     INSERT INTO order_items
-                    (order_id, brand, product_name, stage, quantity, unit)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (order_id, simple_code, brand, product_name, stage, quantity, unit)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         int(order_id),
+                        item.simple_code,
                         item.brand,
                         item.product_name,
                         item.stage,
@@ -96,3 +98,67 @@ class OrderRepository:
                     ),
                 )
             return order_no, status, True
+
+    def product_code_exists(self, simple_code: str) -> bool:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT 1 FROM product_catalog WHERE upper(simple_code) = upper(?) LIMIT 1",
+                (simple_code,),
+            ).fetchone()
+            return row is not None
+
+    def resolve_product_code(
+        self,
+        source_text: str,
+        product_name: str,
+        brand: str | None,
+        stage: str | None,
+    ) -> str | None:
+        with get_connection(self.db_path) as connection:
+            code_rows = connection.execute("SELECT DISTINCT simple_code FROM product_catalog").fetchall()
+            for row in code_rows:
+                code = str(row["simple_code"])
+                if re.search(rf"(?<![0-9A-Za-z]){re.escape(code)}(?![0-9A-Za-z])", source_text, re.IGNORECASE):
+                    return code
+
+            source = self._normalize(f"{source_text} {product_name} {brand or ''} {stage or ''}")
+            rows = connection.execute("SELECT product_name, simple_code FROM product_catalog").fetchall()
+            best_code: str | None = None
+            best_score = 0
+            for row in rows:
+                candidate_name = str(row["product_name"])
+                candidate_code = str(row["simple_code"])
+                score = self._score_match(source, candidate_name, brand, stage)
+                if score > best_score:
+                    best_score = score
+                    best_code = candidate_code
+            if best_score >= 5:
+                return best_code
+            return None
+
+    def _score_match(self, source: str, candidate_name: str, brand: str | None, stage: str | None) -> int:
+        normalized_name = self._normalize(candidate_name)
+        score = 0
+        if normalized_name and normalized_name in source:
+            score += 8
+        if brand:
+            normalized_brand = self._normalize(brand)
+            if normalized_brand and normalized_brand in normalized_name:
+                score += 2
+        if stage:
+            normalized_stage = self._normalize(stage)
+            if normalized_stage and normalized_stage in normalized_name:
+                score += 3
+        if "羊" in source and "羊" in normalized_name:
+            score += 1
+        if "牛" in source and "牛" in normalized_name:
+            score += 1
+        return score
+
+    def _normalize(self, value: str) -> str:
+        compact = value.lower().replace(" ", "")
+        compact = compact.replace("（", "(").replace("）", ")")
+        compact = compact.replace("＋", "+")
+        compact = compact.replace("克", "g")
+        compact = compact.replace("段", "段")
+        return re.sub(r"[^0-9a-z\u4e00-\u9fff\+]+", "", compact)
