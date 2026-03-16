@@ -1,6 +1,7 @@
 import hashlib
 import re
 import uuid
+from typing import Any
 
 from app.db import get_connection
 from app.schemas import ParseOrderResponse, ProductCatalogItem
@@ -294,3 +295,64 @@ class OrderRepository:
         compact = compact.replace("克", "g")
         compact = compact.replace("段", "段")
         return re.sub(r"[^0-9a-z\u4e00-\u9fff\+]+", "", compact)
+
+    def list_recipients_for_export(self) -> list[dict[str, object]]:
+        with get_connection(self.db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, phone, province, city, district, address_detail, postcode
+                FROM recipients
+                ORDER BY id ASC
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_orders_for_export(self, status: str | None = "ready_to_upload") -> list[dict[str, object]]:
+        with get_connection(self.db_path) as connection:
+            sql = """
+                SELECT
+                    o.id AS order_id,
+                    o.order_no AS order_no,
+                    o.status AS order_status,
+                    r.name AS recipient_name,
+                    r.phone AS recipient_phone,
+                    r.province AS province,
+                    r.city AS city,
+                    r.district AS district,
+                    r.address_detail AS address_detail,
+                    oi.simple_code AS simple_code,
+                    oi.quantity AS quantity,
+                    oi.product_name AS product_name
+                FROM orders o
+                JOIN recipients r ON r.id = o.recipient_id
+                JOIN order_items oi ON oi.order_id = o.id
+            """
+            params: list[object] = []
+            if status is not None:
+                sql += " WHERE o.status = ?"
+                params.append(status)
+            sql += " ORDER BY o.id ASC, oi.id ASC"
+            rows = connection.execute(sql, params).fetchall()
+            grouped: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                order_no = str(row["order_no"])
+                if order_no not in grouped:
+                    grouped[order_no] = {
+                        "order_no": order_no,
+                        "order_status": str(row["order_status"]),
+                        "recipient_name": str(row["recipient_name"]),
+                        "recipient_phone": str(row["recipient_phone"]),
+                        "province": str(row["province"] or ""),
+                        "city": str(row["city"] or ""),
+                        "district": str(row["district"] or ""),
+                        "address_detail": str(row["address_detail"]),
+                        "items": [],
+                    }
+                grouped[order_no]["items"].append(
+                    {
+                        "simple_code": str(row["simple_code"]),
+                        "quantity": int(row["quantity"]),
+                        "product_name": str(row["product_name"]),
+                    }
+                )
+            return list(grouped.values())

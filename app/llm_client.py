@@ -13,6 +13,19 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
     db_path: str = "data/ada_order.db"
+    recipient_template_path: str = "templates/收件人模板.xlsx"
+    order_template_path: str = "templates/订单导入模板.xlsx"
+    export_dir: str = "exports"
+    sender_name: str = "Jing Zhu"
+    sender_phone: str = "15201069795"
+    sender_street: str = "Emilienstraße"
+    sender_house_no: str = "24"
+    sender_postcode: str = "70563"
+    sender_city: str = "Stuttgart"
+    sender_country_code: str = "DE"
+    recipient_country_code: str = "CN"
+    channel_code: str = "2G"
+    goods_purpose: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

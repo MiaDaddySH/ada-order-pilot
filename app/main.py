@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from app.schemas import (
     BatchUpsertProductsRequest,
@@ -60,3 +61,17 @@ def update_product_status(product_id: int, payload: UpdateProductStatusRequest) 
         return service.update_product_status(product_id=product_id, payload=payload)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/export/recipients-template")
+def export_recipients_template() -> FileResponse:
+    service = OrderParseService()
+    path = service.export_recipients_template()
+    return FileResponse(path=path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/api/v1/export/orders-template")
+def export_orders_template(status: str | None = "ready_to_upload") -> FileResponse:
+    service = OrderParseService()
+    path = service.export_orders_template(status=status)
+    return FileResponse(path=path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

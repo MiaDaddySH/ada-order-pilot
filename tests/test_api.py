@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from app.main import app
 
@@ -97,3 +98,79 @@ def test_product_batch_upsert(tmp_path: Path) -> None:
     codes = {item["simple_code"] for item in queried.json()}
     assert "BATCHA" in codes
     assert "BATCHB" in codes
+
+
+def test_export_templates(tmp_path: Path) -> None:
+    recipient_template = tmp_path / "收件人模板.xlsx"
+    order_template = tmp_path / "订单导入模板.xlsx"
+    _create_recipient_template(recipient_template)
+    _create_order_template(order_template)
+    os.environ["DB_PATH"] = str(tmp_path / "test_export.db")
+    os.environ["RECIPIENT_TEMPLATE_PATH"] = str(recipient_template)
+    os.environ["ORDER_TEMPLATE_PATH"] = str(order_template)
+    os.environ["EXPORT_DIR"] = str(tmp_path / "exports")
+    client = TestClient(app)
+    payload = {
+        "input_text": "广东省广州市花都区庙南巷42号嘉汇城西区4栋，游锦平13416101033（HO2 4盒）"
+    }
+    created = client.post("/api/v1/orders/from-input", json=payload)
+    assert created.status_code == 200
+    recipients_file = client.get("/api/v1/export/recipients-template")
+    orders_file = client.get("/api/v1/export/orders-template")
+    assert recipients_file.status_code == 200
+    assert orders_file.status_code == 200
+    assert recipients_file.content[:2] == b"PK"
+    assert orders_file.content[:2] == b"PK"
+
+
+def _create_recipient_template(path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "导入数据"
+    sheet["A1"] = "中国地址模板导入"
+    headers = ["*姓名", "*身份证号码", "*电话国际区号", "*电话号码", "*省", "*市", "*区", "*详细地址", "*邮编"]
+    for idx, header in enumerate(headers, start=1):
+        sheet.cell(row=2, column=idx).value = header
+    sheet["C3"] = "86"
+    workbook.save(path)
+
+
+def _create_order_template(path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "批量下单"
+    headers = [
+        "包裹备注",
+        "寄件人姓名",
+        "寄件人电话",
+        "路名",
+        "门牌号",
+        "寄件人邮编",
+        "寄件人城市",
+        "寄件人国家简称",
+        "收件人姓名",
+        "身份证号",
+        "手机号码",
+        "收件人国家简称",
+        "省",
+        "市",
+        "区/县",
+        "详细地址（省市区/县请勿重复填）",
+        "渠道代码",
+        "货物用途",
+        "商品代码1",
+        "数量1",
+        "商品代码2",
+        "数量2",
+        "商品代码3",
+        "数量3",
+        "商品代码4",
+        "数量4",
+        "商品代码5",
+        "数量5",
+        "商品代码6",
+        "数量6",
+    ]
+    for idx, header in enumerate(headers, start=1):
+        sheet.cell(row=1, column=idx).value = header
+    workbook.save(path)

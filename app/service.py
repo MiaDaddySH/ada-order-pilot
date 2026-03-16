@@ -11,6 +11,7 @@ from app.schemas import (
     ProductCatalogItem,
     UpdateProductStatusRequest,
 )
+from app.template_export import TemplateExporter
 
 
 class OrderParseService:
@@ -19,6 +20,7 @@ class OrderParseService:
         self.parser = LLMOrderParser(self.settings)
         init_db(self.settings.db_path)
         self.repository = OrderRepository(self.settings.db_path)
+        self.template_exporter = TemplateExporter(self.settings)
 
     def parse(self, input_text: str) -> ParseOrderResponse:
         result = self.parser.parse_order(input_text)
@@ -89,3 +91,13 @@ class OrderParseService:
         if updated is None:
             raise ValueError("商品不存在")
         return updated
+
+    def export_recipients_template(self) -> str:
+        recipients = self.repository.list_recipients_for_export()
+        path = self.template_exporter.export_recipients(recipients)
+        return str(path)
+
+    def export_orders_template(self, status: str | None = "ready_to_upload") -> str:
+        orders = self.repository.list_orders_for_export(status=status)
+        path = self.template_exporter.export_orders(orders)
+        return str(path)
