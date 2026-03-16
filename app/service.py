@@ -1,3 +1,5 @@
+import re
+
 from app.db import init_db
 from app.llm_client import LLMOrderParser, Settings
 from app.repository import OrderRepository
@@ -57,7 +59,7 @@ class OrderParseService:
         recipient_id_card_no: str | None = None,
     ) -> CreateOrderFromInputResponse:
         parsed = self.parse(input_text)
-        self._enrich_recipient_from_existing(parsed)
+        self._enrich_recipient_from_existing(parsed, input_text)
         if recipient_id_card_no and recipient_id_card_no.strip():
             parsed.recipient.id_card_no = recipient_id_card_no.strip()
         missing_fields = self._collect_missing_recipient_fields(parsed.recipient)
@@ -82,13 +84,27 @@ class OrderParseService:
             parse_result=parsed,
         )
 
-    def _enrich_recipient_from_existing(self, parsed: ParseOrderResponse) -> None:
+    def _enrich_recipient_from_existing(self, parsed: ParseOrderResponse, input_text: str) -> None:
         name = (parsed.recipient.name or "").strip()
-        if not name or name == "待确认":
+        extracted_name = self._extract_name_from_input(input_text)
+        lookup_names: list[str] = []
+        if name and name != "待确认":
+            lookup_names.append(name)
+        if extracted_name and extracted_name not in lookup_names:
+            lookup_names.append(extracted_name)
+        if not lookup_names:
             return
-        existing = self.repository.find_recipient_by_name(name)
+        existing = None
+        matched_name = ""
+        for candidate in lookup_names:
+            existing = self.repository.find_recipient_by_name(candidate)
+            if existing is not None:
+                matched_name = candidate
+                break
         if existing is None:
             return
+        if (not parsed.recipient.name or parsed.recipient.name == "待确认") and matched_name:
+            parsed.recipient.name = matched_name
         should_hydrate = (
             not parsed.recipient.phone
             or parsed.recipient.phone == "00000000000"
@@ -106,6 +122,18 @@ class OrderParseService:
             parsed.recipient.postcode = (str(existing.get("postcode") or "").strip() or None)
         if not parsed.recipient.id_card_no:
             parsed.recipient.id_card_no = (str(existing.get("id_card_no") or "").strip() or None)
+
+    def _extract_name_from_input(self, input_text: str) -> str | None:
+        text = input_text.strip()
+        if not text:
+            return None
+        first_chunk = re.split(r"[\s,，;；（(]", text, maxsplit=1)[0].strip()
+        if re.fullmatch(r"[\u4e00-\u9fff]{2,6}", first_chunk):
+            return first_chunk
+        matched = re.search(r"[\u4e00-\u9fff]{2,6}", text)
+        if matched:
+            return matched.group(0)
+        return None
 
     def _collect_missing_recipient_fields(self, recipient: ParsedRecipient) -> list[str]:
         missing: list[str] = []
