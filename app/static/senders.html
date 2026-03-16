@@ -4,58 +4,83 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>寄件人列表</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; margin: 20px; background: #f6f8fb; }
-      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-      .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-      input { padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; width: 100%; box-sizing: border-box; }
-      button { border: none; border-radius: 8px; background: #2563eb; color: #fff; padding: 8px 12px; cursor: pointer; margin-right: 8px; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; vertical-align: top; }
-      .muted { color: #6b7280; }
-    </style>
+    <link rel="stylesheet" href="/static/admin.css" />
   </head>
   <body>
-    <div class="card">
-      <button onclick="window.location.href='/'">返回首页</button>
-      <h2>寄件人列表（增删改查）</h2>
-      <div class="row">
-        <input id="name" placeholder="姓名" />
-        <input id="phone" placeholder="电话" />
-        <input id="street" placeholder="路名" />
-        <input id="houseNo" placeholder="门牌号" />
-        <input id="postcode" placeholder="邮编" />
-        <input id="city" placeholder="城市" />
-        <input id="countryCode" placeholder="国家简称" />
-        <input id="isDefault" placeholder="默认 true/false" />
+    <div class="container">
+      <div class="card">
+        <div class="toolbar">
+          <button class="secondary" onclick="window.location.href='/'">返回首页</button>
+          <button class="secondary" onclick="window.location.href='/recipients'">收件人列表</button>
+          <button class="secondary" onclick="window.location.href='/orders'">订单列表</button>
+          <button class="secondary" onclick="window.location.href='/products'">商品列表</button>
+        </div>
+        <h2 class="title">寄件人管理</h2>
+        <div class="grid-4">
+          <input id="name" placeholder="姓名（必填）" />
+          <input id="phone" placeholder="电话（必填）" />
+          <input id="street" placeholder="路名（必填）" />
+          <input id="houseNo" placeholder="门牌号（必填）" />
+          <input id="postcode" placeholder="邮编（必填）" />
+          <input id="city" placeholder="城市（必填）" />
+          <input id="countryCode" placeholder="国家简称（必填）" />
+          <select id="isDefault">
+            <option value="false">非默认</option>
+            <option value="true">设为默认</option>
+          </select>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="createBtn">新增</button>
+          <button id="updateBtn">更新选中</button>
+          <button class="danger" id="deleteBtn">删除选中</button>
+          <input id="searchInput" placeholder="搜索：姓名/电话/城市" style="max-width:280px" />
+        </div>
+        <p class="hint" id="statusInfo">未选择记录</p>
       </div>
-      <div style="margin-top:10px">
-        <button id="createBtn">新增</button>
-        <button id="updateBtn">更新选中</button>
-        <button id="deleteBtn">删除选中</button>
-        <span class="muted" id="statusInfo">未选择记录</span>
+      <div class="card">
+        <table>
+          <thead><tr><th>ID</th><th>姓名</th><th>电话</th><th>地址</th><th>国家</th><th>默认</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="pagination" style="margin-top:10px">
+          <button class="secondary" id="prevBtn">上一页</button>
+          <span class="hint" id="pageInfo">第 1 / 1 页</span>
+          <button class="secondary" id="nextBtn">下一页</button>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <table>
-        <thead><tr><th>ID</th><th>姓名</th><th>电话</th><th>地址</th><th>国家</th><th>默认</th></tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
     </div>
     <script>
+      const pageSize = 10;
       let selectedId = null;
       let selected = null;
+      let allRows = [];
+      let page = 1;
       function toBool(v) { return String(v).toLowerCase() === "true"; }
+      function setStatus(text, isErr = false) {
+        const el = document.getElementById("statusInfo");
+        el.textContent = text;
+        el.className = isErr ? "hint status-err" : "hint status-ok";
+      }
       function payload() {
+        const name = document.getElementById("name").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const street = document.getElementById("street").value.trim();
+        const houseNo = document.getElementById("houseNo").value.trim();
+        const postcode = document.getElementById("postcode").value.trim();
+        const city = document.getElementById("city").value.trim();
+        const countryCode = document.getElementById("countryCode").value.trim();
+        if (!name || !phone || !street || !houseNo || !postcode || !city || !countryCode) {
+          throw new Error("姓名、电话、地址、邮编、城市、国家简称都为必填");
+        }
         return {
-          name: document.getElementById("name").value.trim(),
-          phone: document.getElementById("phone").value.trim(),
-          street: document.getElementById("street").value.trim(),
-          house_no: document.getElementById("houseNo").value.trim(),
-          postcode: document.getElementById("postcode").value.trim(),
-          city: document.getElementById("city").value.trim(),
-          country_code: document.getElementById("countryCode").value.trim(),
-          is_default: toBool(document.getElementById("isDefault").value || "false"),
+          name,
+          phone,
+          street,
+          house_no: houseNo,
+          postcode,
+          city,
+          country_code: countryCode,
+          is_default: toBool(document.getElementById("isDefault").value),
         };
       }
       function fill(item) {
@@ -66,51 +91,75 @@
         document.getElementById("postcode").value = item.postcode || "";
         document.getElementById("city").value = item.city || "";
         document.getElementById("countryCode").value = item.country_code || "";
-        document.getElementById("isDefault").value = String(item.is_default);
+        document.getElementById("isDefault").value = String(Boolean(item.is_default));
       }
-      async function refresh() {
-        const res = await fetch("/api/v1/senders");
-        const data = await res.json();
+      function filteredRows() {
+        const q = document.getElementById("searchInput").value.trim().toLowerCase();
+        if (!q) return allRows;
+        return allRows.filter((x) => (`${x.name} ${x.phone} ${x.city}`).toLowerCase().includes(q));
+      }
+      function renderTable() {
+        const data = filteredRows();
+        const totalPage = Math.max(1, Math.ceil(data.length / pageSize));
+        page = Math.min(page, totalPage);
+        const current = data.slice((page - 1) * pageSize, page * pageSize);
         const body = document.getElementById("rows");
         body.innerHTML = "";
-        data.forEach((item) => {
+        current.forEach((item) => {
           const tr = document.createElement("tr");
+          if (selectedId === item.id) tr.classList.add("selected");
           tr.innerHTML = `<td>${item.id}</td><td>${item.name}</td><td>${item.phone}</td><td>${item.street} ${item.house_no}, ${item.postcode} ${item.city}</td><td>${item.country_code}</td><td>${item.is_default}</td>`;
           tr.onclick = () => {
             selectedId = item.id;
             selected = item;
             fill(item);
-            document.getElementById("statusInfo").textContent = `已选择 ID=${item.id}`;
+            renderTable();
+            setStatus(`已选择 ID=${item.id}`);
           };
           body.appendChild(tr);
         });
+        document.getElementById("pageInfo").textContent = `第 ${page} / ${totalPage} 页`;
+        document.getElementById("prevBtn").disabled = page <= 1;
+        document.getElementById("nextBtn").disabled = page >= totalPage;
       }
+      async function loadData() {
+        const res = await fetch("/api/v1/senders");
+        allRows = await res.json();
+        renderTable();
+      }
+      document.getElementById("searchInput").oninput = () => { page = 1; renderTable(); };
+      document.getElementById("prevBtn").onclick = () => { page -= 1; renderTable(); };
+      document.getElementById("nextBtn").onclick = () => { page += 1; renderTable(); };
       document.getElementById("createBtn").onclick = async () => {
-        await fetch("/api/v1/senders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
-        await refresh();
+        try {
+          await fetch("/api/v1/senders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
+          await loadData();
+          setStatus("新增成功");
+        } catch (e) {
+          setStatus(String(e), true);
+        }
       };
       document.getElementById("updateBtn").onclick = async () => {
-        if (!selectedId) return;
-        const p = payload();
-        if (!p.name) p.name = selected.name;
-        if (!p.phone) p.phone = selected.phone;
-        if (!p.street) p.street = selected.street;
-        if (!p.house_no) p.house_no = selected.house_no;
-        if (!p.postcode) p.postcode = selected.postcode;
-        if (!p.city) p.city = selected.city;
-        if (!p.country_code) p.country_code = selected.country_code;
-        await fetch(`/api/v1/senders/${selectedId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
-        await refresh();
+        if (!selectedId) return setStatus("请先选择记录", true);
+        try {
+          const p = payload();
+          await fetch(`/api/v1/senders/${selectedId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+          await loadData();
+          setStatus("更新成功");
+        } catch (e) {
+          setStatus(String(e), true);
+        }
       };
       document.getElementById("deleteBtn").onclick = async () => {
-        if (!selectedId) return;
+        if (!selectedId) return setStatus("请先选择记录", true);
+        if (!window.confirm(`确认删除寄件人 ID=${selectedId} 吗？`)) return;
         await fetch(`/api/v1/senders/${selectedId}`, { method: "DELETE" });
         selectedId = null;
         selected = null;
-        document.getElementById("statusInfo").textContent = "未选择记录";
-        await refresh();
+        await loadData();
+        setStatus("删除成功");
       };
-      refresh();
+      loadData();
     </script>
   </body>
 </html>

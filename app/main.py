@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.schemas import (
     BatchUpsertProductsRequest,
@@ -28,6 +29,7 @@ RECIPIENTS_FILE = Path(__file__).parent / "static" / "recipients.html"
 ORDERS_FILE = Path(__file__).parent / "static" / "orders.html"
 PRODUCTS_FILE = Path(__file__).parent / "static" / "products.html"
 SENDERS_FILE = Path(__file__).parent / "static" / "senders.html"
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
 @app.get("/")

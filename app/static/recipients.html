@@ -4,63 +4,79 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>收件人列表</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; margin: 20px; background: #f6f8fb; }
-      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-      .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-      input { padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; width: 100%; box-sizing: border-box; }
-      button { border: none; border-radius: 8px; background: #2563eb; color: #fff; padding: 8px 12px; cursor: pointer; margin-right: 8px; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; vertical-align: top; }
-      .muted { color: #6b7280; }
-    </style>
+    <link rel="stylesheet" href="/static/admin.css" />
   </head>
   <body>
-    <div class="card">
-      <button onclick="window.location.href='/'">返回首页</button>
-      <h2>收件人列表（增删改查）</h2>
-      <div class="row">
-        <input id="name" placeholder="姓名" />
-        <input id="phone" placeholder="手机号" />
-        <input id="province" placeholder="省" />
-        <input id="city" placeholder="市" />
-        <input id="district" placeholder="区" />
-        <input id="addressDetail" placeholder="详细地址" />
-        <input id="rawAddress" placeholder="原始地址文本" />
-        <input id="postcode" placeholder="邮编" />
+    <div class="container">
+      <div class="card">
+        <div class="toolbar">
+          <button class="secondary" onclick="window.location.href='/'">返回首页</button>
+          <button class="secondary" onclick="window.location.href='/orders'">订单列表</button>
+          <button class="secondary" onclick="window.location.href='/products'">商品列表</button>
+          <button class="secondary" onclick="window.location.href='/senders'">寄件人列表</button>
+        </div>
+        <h2 class="title">收件人管理</h2>
+        <div class="grid-4">
+          <input id="name" placeholder="姓名（必填）" />
+          <input id="phone" placeholder="手机号（必填）" />
+          <input id="province" placeholder="省" />
+          <input id="city" placeholder="市" />
+          <input id="district" placeholder="区" />
+          <input id="addressDetail" placeholder="详细地址（必填）" />
+          <input id="rawAddress" placeholder="原始地址文本（可空）" />
+          <input id="postcode" placeholder="邮编" />
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="createBtn">新增</button>
+          <button id="updateBtn">更新选中</button>
+          <button class="danger" id="deleteBtn">删除选中</button>
+          <input id="searchInput" placeholder="搜索：姓名/手机号/地址" style="max-width:260px" />
+        </div>
+        <p class="hint" id="statusText">未选择记录</p>
       </div>
-      <div style="margin-top:10px">
-        <button id="createBtn">新增</button>
-        <button id="updateBtn">更新选中</button>
-        <button id="deleteBtn">删除选中</button>
-        <span class="muted" id="status">未选择记录</span>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>姓名</th><th>手机号</th><th>省市区</th><th>详细地址</th><th>邮编</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="pagination" style="margin-top:10px">
+          <button class="secondary" id="prevBtn">上一页</button>
+          <span class="hint" id="pageInfo">第 1 / 1 页</span>
+          <button class="secondary" id="nextBtn">下一页</button>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th><th>姓名</th><th>手机号</th><th>省市区</th><th>详细地址</th><th>邮编</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
     </div>
     <script>
+      const pageSize = 10;
       let selectedId = null;
-      function payload() {
+      let allRows = [];
+      let page = 1;
+      function setStatus(text, isErr = false) {
+        const el = document.getElementById("statusText");
+        el.textContent = text;
+        el.className = isErr ? "hint status-err" : "hint status-ok";
+      }
+      function getPayload() {
+        const name = document.getElementById("name").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const addressDetail = document.getElementById("addressDetail").value.trim();
+        if (!name || !phone || !addressDetail) {
+          throw new Error("姓名、手机号、详细地址为必填");
+        }
         return {
-          name: document.getElementById("name").value.trim(),
-          phone: document.getElementById("phone").value.trim(),
+          name,
+          phone,
           province: document.getElementById("province").value.trim() || null,
           city: document.getElementById("city").value.trim() || null,
           district: document.getElementById("district").value.trim() || null,
-          address_detail: document.getElementById("addressDetail").value.trim(),
-          raw_address: document.getElementById("rawAddress").value.trim() || document.getElementById("addressDetail").value.trim(),
+          address_detail: addressDetail,
+          raw_address: document.getElementById("rawAddress").value.trim() || addressDetail,
           postcode: document.getElementById("postcode").value.trim() || null,
         };
       }
-      function fill(item) {
+      function fillForm(item) {
         document.getElementById("name").value = item.name || "";
         document.getElementById("phone").value = item.phone || "";
         document.getElementById("province").value = item.province || "";
@@ -70,39 +86,71 @@
         document.getElementById("rawAddress").value = item.raw_address || "";
         document.getElementById("postcode").value = item.postcode || "";
       }
-      async function refresh() {
-        const res = await fetch("/api/v1/recipients");
-        const data = await res.json();
+      function filteredRows() {
+        const q = document.getElementById("searchInput").value.trim().toLowerCase();
+        if (!q) return allRows;
+        return allRows.filter((x) => (`${x.name} ${x.phone} ${x.address_detail}`).toLowerCase().includes(q));
+      }
+      function renderTable() {
+        const rows = filteredRows();
+        const totalPage = Math.max(1, Math.ceil(rows.length / pageSize));
+        page = Math.min(page, totalPage);
+        const start = (page - 1) * pageSize;
+        const current = rows.slice(start, start + pageSize);
         const body = document.getElementById("rows");
         body.innerHTML = "";
-        data.forEach((item) => {
+        current.forEach((item) => {
           const tr = document.createElement("tr");
+          if (selectedId === item.id) tr.classList.add("selected");
           tr.innerHTML = `<td>${item.id}</td><td>${item.name}</td><td>${item.phone}</td><td>${item.province || ""}${item.city || ""}${item.district || ""}</td><td>${item.address_detail}</td><td>${item.postcode || ""}</td>`;
           tr.onclick = () => {
             selectedId = item.id;
-            fill(item);
-            document.getElementById("status").textContent = `已选择 ID=${item.id}`;
+            fillForm(item);
+            renderTable();
+            setStatus(`已选择 ID=${item.id}`);
           };
           body.appendChild(tr);
         });
+        document.getElementById("pageInfo").textContent = `第 ${page} / ${totalPage} 页`;
+        document.getElementById("prevBtn").disabled = page <= 1;
+        document.getElementById("nextBtn").disabled = page >= totalPage;
       }
+      async function loadData() {
+        const res = await fetch("/api/v1/recipients");
+        allRows = await res.json();
+        renderTable();
+      }
+      document.getElementById("searchInput").oninput = () => { page = 1; renderTable(); };
+      document.getElementById("prevBtn").onclick = () => { page -= 1; renderTable(); };
+      document.getElementById("nextBtn").onclick = () => { page += 1; renderTable(); };
       document.getElementById("createBtn").onclick = async () => {
-        await fetch("/api/v1/recipients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
-        await refresh();
+        try {
+          await fetch("/api/v1/recipients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(getPayload()) });
+          await loadData();
+          setStatus("新增成功");
+        } catch (e) {
+          setStatus(String(e), true);
+        }
       };
       document.getElementById("updateBtn").onclick = async () => {
-        if (!selectedId) return;
-        await fetch(`/api/v1/recipients/${selectedId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
-        await refresh();
+        if (!selectedId) return setStatus("请先选择记录", true);
+        try {
+          await fetch(`/api/v1/recipients/${selectedId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(getPayload()) });
+          await loadData();
+          setStatus("更新成功");
+        } catch (e) {
+          setStatus(String(e), true);
+        }
       };
       document.getElementById("deleteBtn").onclick = async () => {
-        if (!selectedId) return;
+        if (!selectedId) return setStatus("请先选择记录", true);
+        if (!window.confirm(`确认删除收件人 ID=${selectedId} 吗？`)) return;
         await fetch(`/api/v1/recipients/${selectedId}`, { method: "DELETE" });
         selectedId = null;
-        document.getElementById("status").textContent = "未选择记录";
-        await refresh();
+        await loadData();
+        setStatus("删除成功");
       };
-      refresh();
+      loadData();
     </script>
   </body>
 </html>
