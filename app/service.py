@@ -47,6 +47,7 @@ class OrderParseService:
             products=products,
             confidence=confidence,
             needs_review=result.needs_review or unresolved,
+            parse_source=result.parse_source,
         )
 
     def create_order_from_input(self, input_text: str) -> CreateOrderFromInputResponse:

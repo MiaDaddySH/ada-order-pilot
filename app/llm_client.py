@@ -35,6 +35,7 @@ class LLMParseResult(BaseModel):
     products: list[dict[str, Any]]
     confidence: float
     needs_review: bool
+    parse_source: str
 
 
 @dataclass
@@ -63,7 +64,10 @@ class LLMOrderParser:
                 temperature=0,
             )
             content = response.choices[0].message.content or "{}"
-            return LLMParseResult.model_validate(json.loads(content))
+            payload = json.loads(content)
+            if isinstance(payload, dict):
+                payload["parse_source"] = "llm"
+            return LLMParseResult.model_validate(payload)
         except Exception:
             return self._fallback_parse(text)
 
@@ -136,6 +140,7 @@ class LLMOrderParser:
             ],
             confidence=0.2,
             needs_review=True,
+            parse_source="fallback",
         )
 
     def _strip_product_segment(self, text: str) -> str:

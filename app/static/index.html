@@ -94,6 +94,7 @@
           <button id="parseBtn">解析预览</button>
           <button id="createOrderBtn">创建订单</button>
         </div>
+        <p class="hint" id="parseSource">解析来源：-</p>
         <p class="hint">创建订单要求商品能匹配简易代码。</p>
         <pre id="parseOutput">{}</pre>
       </div>
@@ -145,6 +146,7 @@
 
     <script>
       const parseOutput = document.getElementById("parseOutput");
+      const parseSource = document.getElementById("parseSource");
       const productsOutput = document.getElementById("productsOutput");
 
       function pretty(data) {
@@ -176,8 +178,10 @@
             body: JSON.stringify({ input_text: inputText }),
           });
           parseOutput.textContent = pretty(data);
+          parseSource.textContent = `解析来源：${data.parse_source || "-"}`;
         } catch (e) {
           parseOutput.textContent = String(e);
+          parseSource.textContent = "解析来源：-";
         }
       };
 
@@ -190,8 +194,11 @@
             body: JSON.stringify({ input_text: inputText }),
           });
           parseOutput.textContent = pretty(data);
+          const source = data.parse_result?.parse_source || "-";
+          parseSource.textContent = `解析来源：${source}`;
         } catch (e) {
           parseOutput.textContent = String(e);
+          parseSource.textContent = "解析来源：-";
         }
       };
 

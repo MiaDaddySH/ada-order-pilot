@@ -41,6 +41,7 @@ def test_parse_order_input(tmp_path: Path) -> None:
     assert body["recipient"]["city"] == "广州市"
     assert body["recipient"]["district"] == "花都区"
     assert "庙南巷42号" in body["recipient"]["address_detail"]
+    assert body["parse_source"] == "fallback"
     assert body["products"][0]["simple_code"] is not None
     assert "holle" in (body["products"][0]["brand"] or "").lower()
     assert "holle" in body["products"][0]["product_name"].lower()
@@ -62,6 +63,7 @@ def test_parse_order_input_with_alias_brand(tmp_path: Path) -> None:
     assert body["recipient"]["city"] == "杭州市"
     assert body["recipient"]["district"] == "萧山区"
     assert body["recipient"]["address_detail"] == "蜀山街道山水苑34-1-501"
+    assert body["parse_source"] == "fallback"
     assert body["products"][0]["simple_code"] == "42604770514557"
     assert "乐温赞" in body["products"][0]["product_name"]
     assert body["products"][0]["quantity"] == 8
@@ -83,6 +85,7 @@ def test_create_order_from_input_idempotent(tmp_path: Path) -> None:
     assert second_body["order_created"] is False
     assert first_body["order_no"] == second_body["order_no"]
     assert first_body["parse_result"]["products"][0]["simple_code"] == "HO2"
+    assert first_body["parse_result"]["parse_source"] == "fallback"
 
 
 def test_create_order_from_input_requires_simple_code(tmp_path: Path) -> None:

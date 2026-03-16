@@ -30,6 +30,7 @@ class ParseOrderResponse(BaseModel):
     products: list[ParsedProduct]
     confidence: float = Field(ge=0, le=1)
     needs_review: bool
+    parse_source: str
 
 
 class CreateOrderFromInputResponse(BaseModel):
