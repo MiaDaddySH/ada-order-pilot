@@ -12,6 +12,8 @@ from app.schemas import (
     ParsedProduct,
     ParsedRecipient,
     ProductCatalogItem,
+    RecipientBatchUpsertRequest,
+    RecipientImportImageResponse,
     RecipientItem,
     RecipientUpsertRequest,
     SenderBatchUpsertRequest,
@@ -126,6 +128,36 @@ class OrderParseService:
 
     def delete_recipient(self, recipient_id: int) -> bool:
         return self.repository.delete_recipient(recipient_id)
+
+    def batch_upsert_recipients(self, payload: RecipientBatchUpsertRequest) -> int:
+        items = []
+        for item in payload.recipients:
+            data = item.model_dump()
+            data["name"] = data["name"].strip()
+            data["phone"] = data["phone"].strip()
+            data["address_detail"] = data["address_detail"].strip()
+            data["raw_address"] = data["raw_address"].strip()
+            if data.get("id_card_no"):
+                data["id_card_no"] = str(data["id_card_no"]).strip().upper()
+            items.append(data)
+        return self.repository.batch_upsert_recipients(items)
+
+    def import_recipients_from_image(self, image_bytes: bytes, mime_type: str) -> RecipientImportImageResponse:
+        parsed = self.parser.parse_recipients_from_image(image_bytes=image_bytes, mime_type=mime_type)
+        if not parsed:
+            return RecipientImportImageResponse(imported_count=0, recipients=[])
+        imported_count = self.repository.batch_upsert_recipients(parsed)
+        rows = self.repository.list_recipients()
+        recipient_map = {(str(row["name"]), str(row["phone"]), str(row["address_detail"])): row for row in rows}
+        imported_rows = [
+            recipient_map[(str(item["name"]), str(item["phone"]), str(item["address_detail"]))]
+            for item in parsed
+            if (str(item["name"]), str(item["phone"]), str(item["address_detail"])) in recipient_map
+        ]
+        return RecipientImportImageResponse(
+            imported_count=imported_count,
+            recipients=[RecipientItem.model_validate(row) for row in imported_rows],
+        )
 
     def list_orders(self) -> list[OrderView]:
         rows = self.repository.list_orders()

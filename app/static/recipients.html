@@ -33,6 +33,16 @@
           <button class="danger" id="deleteBtn">删除选中</button>
           <input id="searchInput" placeholder="搜索：姓名/手机号/地址" style="max-width:260px" />
         </div>
+        <div class="grid-2" style="margin-top:10px">
+          <textarea id="batchRecipients" placeholder="批量导入文本（每行：姓名,手机号,身份证号,省,市,区,详细地址,原始地址,邮编）"></textarea>
+          <div>
+            <input id="recipientImage" type="file" accept="image/*" />
+            <div class="actions" style="margin-top:8px">
+              <button class="secondary" id="batchImportBtn">导入文本</button>
+              <button class="secondary" id="imageImportBtn">导入图片</button>
+            </div>
+          </div>
+        </div>
         <p class="hint" id="statusText">未选择记录</p>
       </div>
       <div class="card">
@@ -152,6 +162,72 @@
         selectedId = null;
         await loadData();
         setStatus("删除成功");
+      };
+      document.getElementById("batchImportBtn").onclick = async () => {
+        try {
+          const lines = document.getElementById("batchRecipients").value.split("\n").map((x) => x.trim()).filter(Boolean);
+          const recipients = lines.map((line) => {
+            const parts = line.split(",").map((x) => x.trim());
+            const address = parts[6] || "";
+            return {
+              name: parts[0] || "",
+              phone: parts[1] || "",
+              id_card_no: parts[2] || null,
+              province: parts[3] || null,
+              city: parts[4] || null,
+              district: parts[5] || null,
+              address_detail: address,
+              raw_address: parts[7] || address,
+              postcode: parts[8] || null,
+            };
+          }).filter((x) => x.name && x.phone && x.address_detail && x.raw_address);
+          if (!recipients.length) {
+            return setStatus("没有可导入的有效文本行", true);
+          }
+          const res = await fetch("/api/v1/recipients/batch-upsert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recipients }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          await loadData();
+          setStatus(`文本导入成功，共 ${data.imported_count} 条`);
+        } catch (e) {
+          setStatus(String(e), true);
+        }
+      };
+      document.getElementById("imageImportBtn").onclick = async () => {
+        try {
+          const fileInput = document.getElementById("recipientImage");
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) return setStatus("请先选择图片文件", true);
+          const imageBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = String(reader.result || "");
+              const parts = dataUrl.split(",");
+              if (parts.length < 2) {
+                reject(new Error("图片读取失败"));
+                return;
+              }
+              resolve(parts[1]);
+            };
+            reader.onerror = () => reject(new Error("图片读取失败"));
+            reader.readAsDataURL(file);
+          });
+          const res = await fetch("/api/v1/recipients/import-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_base64: imageBase64, mime_type: file.type || "image/png" }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          await loadData();
+          setStatus(`图片导入成功，共 ${data.imported_count} 条`);
+        } catch (e) {
+          setStatus(String(e), true);
+        }
       };
       loadData();
     </script>

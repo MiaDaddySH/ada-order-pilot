@@ -139,6 +139,63 @@ class OrderRepository:
             connection.execute("DELETE FROM recipients WHERE id = ?", (recipient_id,))
             return True
 
+    def batch_upsert_recipients(self, payloads: list[dict[str, Any]]) -> int:
+        with get_connection(self.db_path) as connection:
+            imported = 0
+            for payload in payloads:
+                row = connection.execute(
+                    """
+                    SELECT id FROM recipients
+                    WHERE phone = ? AND name = ? AND address_detail = ?
+                    LIMIT 1
+                    """,
+                    (payload["phone"], payload["name"], payload["address_detail"]),
+                ).fetchone()
+                if row is None:
+                    connection.execute(
+                        """
+                        INSERT INTO recipients
+                        (name, phone, id_card_no, province, city, district, address_detail, raw_address, postcode)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            payload["name"],
+                            payload["phone"],
+                            payload.get("id_card_no"),
+                            payload.get("province"),
+                            payload.get("city"),
+                            payload.get("district"),
+                            payload["address_detail"],
+                            payload["raw_address"],
+                            payload.get("postcode"),
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE recipients
+                        SET id_card_no = COALESCE(id_card_no, ?),
+                            province = COALESCE(province, ?),
+                            city = COALESCE(city, ?),
+                            district = COALESCE(district, ?),
+                            raw_address = COALESCE(raw_address, ?),
+                            postcode = COALESCE(postcode, ?),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (
+                            payload.get("id_card_no"),
+                            payload.get("province"),
+                            payload.get("city"),
+                            payload.get("district"),
+                            payload.get("raw_address"),
+                            payload.get("postcode"),
+                            int(row["id"]),
+                        ),
+                    )
+                imported += 1
+            return imported
+
     def create_or_get_order(
         self,
         recipient_id: int,

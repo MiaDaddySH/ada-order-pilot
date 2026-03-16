@@ -76,6 +76,20 @@ class RecipientUpsertRequest(BaseModel):
     postcode: str | None = None
 
 
+class RecipientBatchUpsertRequest(BaseModel):
+    recipients: list[RecipientUpsertRequest] = Field(min_length=1, max_length=1000)
+
+
+class RecipientImportImageRequest(BaseModel):
+    image_base64: str = Field(min_length=16)
+    mime_type: str = Field(min_length=5, max_length=50)
+
+
+class RecipientImportImageResponse(BaseModel):
+    imported_count: int
+    recipients: list[RecipientItem]
+
+
 class OrderItemPayload(BaseModel):
     simple_code: str = Field(min_length=1, max_length=64)
     brand: str | None = None

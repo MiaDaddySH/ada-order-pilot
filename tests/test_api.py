@@ -27,6 +27,11 @@ def test_parse_order_input_llm_only_without_key_returns_503(tmp_path: Path) -> N
     client = TestClient(app)
     response = client.post("/api/v1/parse-order-input", json={"input_text": "测试地址 王明 13800138000"})
     assert response.status_code == 503
+    image_resp = client.post(
+        "/api/v1/recipients/import-image",
+        json={"image_base64": "aGVsbG8gd29ybGQ=", "mime_type": "image/png"},
+    )
+    assert image_resp.status_code == 503
     os.environ["PARSE_MODE"] = "fallback"
 
 
@@ -265,6 +270,26 @@ def test_management_crud_apis(tmp_path: Path) -> None:
     )
     assert updated_recipient.status_code == 200
     assert updated_recipient.json()["name"] == "李四"
+    recipient_batch = client.post(
+        "/api/v1/recipients/batch-upsert",
+        json={
+            "recipients": [
+                {
+                    "name": "批量收件人A",
+                    "phone": "13800003333",
+                    "id_card_no": "320102199001019876",
+                    "province": "江苏省",
+                    "city": "南京市",
+                    "district": "鼓楼区",
+                    "address_detail": "中山路100号",
+                    "raw_address": "江苏省南京市鼓楼区中山路100号",
+                    "postcode": "210000",
+                }
+            ]
+        },
+    )
+    assert recipient_batch.status_code == 200
+    assert recipient_batch.json()["imported_count"] == 1
 
     created_order = client.post(
         "/api/v1/orders",

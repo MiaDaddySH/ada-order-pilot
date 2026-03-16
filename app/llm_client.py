@@ -47,6 +47,10 @@ class LLMSenderImportResult(BaseModel):
     senders: list[dict[str, Any]]
 
 
+class LLMRecipientImportResult(BaseModel):
+    recipients: list[dict[str, Any]]
+
+
 @dataclass
 class LLMOrderParser:
     settings: Settings
@@ -187,6 +191,66 @@ class LLMOrderParser:
                     "city": city,
                     "country_code": country_code,
                     "is_default": bool(sender.get("is_default", False)),
+                }
+            )
+        return cleaned
+
+    def parse_recipients_from_image(self, image_bytes: bytes, mime_type: str) -> list[dict[str, Any]]:
+        client = self._get_llm_client()
+        data = base64.b64encode(image_bytes).decode("utf-8")
+        prompt = (
+            "你是收件人信息提取器。"
+            "从图片中提取收件人列表，并输出 JSON 对象，字段为 recipients。"
+            "每个 recipient 包含 name,phone,id_card_no,province,city,district,address_detail,raw_address,postcode。"
+            "id_card_no、province、city、district、postcode可以为空。"
+            "raw_address优先使用原始完整地址文本。"
+            "只输出 JSON，不要其他文本。"
+        )
+        response = client.chat.completions.create(
+            model=self.settings.llm_model,
+            messages=[
+                {"role": "system", "content": "你是严格 JSON 输出助手。"},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{data}"},
+                        },
+                    ],
+                },
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        content = response.choices[0].message.content or "{}"
+        payload = json.loads(content)
+        parsed = LLMRecipientImportResult.model_validate(payload)
+        cleaned: list[dict[str, Any]] = []
+        for item in parsed.recipients:
+            name = str(item.get("name") or "").strip()
+            phone = str(item.get("phone") or "").strip()
+            address_detail = str(item.get("address_detail") or "").strip()
+            raw_address = str(item.get("raw_address") or "").strip()
+            if not all([name, phone, address_detail]):
+                continue
+            id_card_no = str(item.get("id_card_no") or "").strip().upper() or None
+            province = str(item.get("province") or "").strip() or None
+            city = str(item.get("city") or "").strip() or None
+            district = str(item.get("district") or "").strip() or None
+            postcode = str(item.get("postcode") or "").strip() or None
+            cleaned.append(
+                {
+                    "name": name,
+                    "phone": phone,
+                    "id_card_no": id_card_no,
+                    "province": province,
+                    "city": city,
+                    "district": district,
+                    "address_detail": address_detail,
+                    "raw_address": raw_address or address_detail,
+                    "postcode": postcode,
                 }
             )
         return cleaned
