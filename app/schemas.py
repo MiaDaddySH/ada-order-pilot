@@ -39,3 +39,23 @@ class CreateOrderFromInputResponse(BaseModel):
     recipient_id: int
     recipient_created: bool
     parse_result: ParseOrderResponse
+
+
+class ProductCatalogItem(BaseModel):
+    id: int
+    product_name: str
+    simple_code: str
+    status: int
+
+
+class CreateProductRequest(BaseModel):
+    product_name: str = Field(min_length=1, max_length=200)
+    simple_code: str = Field(min_length=1, max_length=64)
+
+
+class BatchUpsertProductsRequest(BaseModel):
+    products: list[CreateProductRequest] = Field(min_length=1, max_length=1000)
+
+
+class UpdateProductStatusRequest(BaseModel):
+    status: int = Field(ge=0, le=1)

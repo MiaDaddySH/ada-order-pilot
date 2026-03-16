@@ -3,7 +3,7 @@ import re
 import uuid
 
 from app.db import get_connection
-from app.schemas import ParseOrderResponse
+from app.schemas import ParseOrderResponse, ProductCatalogItem
 
 
 class OrderRepository:
@@ -102,7 +102,11 @@ class OrderRepository:
     def product_code_exists(self, simple_code: str) -> bool:
         with get_connection(self.db_path) as connection:
             row = connection.execute(
-                "SELECT 1 FROM product_catalog WHERE upper(simple_code) = upper(?) LIMIT 1",
+                """
+                SELECT 1 FROM product_catalog
+                WHERE upper(simple_code) = upper(?) AND status = 1
+                LIMIT 1
+                """,
                 (simple_code,),
             ).fetchone()
             return row is not None
@@ -115,14 +119,18 @@ class OrderRepository:
         stage: str | None,
     ) -> str | None:
         with get_connection(self.db_path) as connection:
-            code_rows = connection.execute("SELECT DISTINCT simple_code FROM product_catalog").fetchall()
+            code_rows = connection.execute(
+                "SELECT DISTINCT simple_code FROM product_catalog WHERE status = 1"
+            ).fetchall()
             for row in code_rows:
                 code = str(row["simple_code"])
                 if re.search(rf"(?<![0-9A-Za-z]){re.escape(code)}(?![0-9A-Za-z])", source_text, re.IGNORECASE):
                     return code
 
             source = self._normalize(f"{source_text} {product_name} {brand or ''} {stage or ''}")
-            rows = connection.execute("SELECT product_name, simple_code FROM product_catalog").fetchall()
+            rows = connection.execute(
+                "SELECT product_name, simple_code FROM product_catalog WHERE status = 1"
+            ).fetchall()
             best_code: str | None = None
             best_score = 0
             for row in rows:
@@ -135,6 +143,130 @@ class OrderRepository:
             if best_score >= 5:
                 return best_code
             return None
+
+    def list_products(self, keyword: str | None = None, include_inactive: bool = False) -> list[ProductCatalogItem]:
+        with get_connection(self.db_path) as connection:
+            sql = "SELECT id, product_name, simple_code, status FROM product_catalog WHERE 1=1"
+            params: list[object] = []
+            if not include_inactive:
+                sql += " AND status = 1"
+            if keyword:
+                sql += " AND (product_name LIKE ? OR simple_code LIKE ?)"
+                kw = f"%{keyword}%"
+                params.extend([kw, kw])
+            sql += " ORDER BY id ASC"
+            rows = connection.execute(sql, params).fetchall()
+            return [
+                ProductCatalogItem(
+                    id=int(row["id"]),
+                    product_name=str(row["product_name"]),
+                    simple_code=str(row["simple_code"]),
+                    status=int(row["status"]),
+                )
+                for row in rows
+            ]
+
+    def create_product(self, product_name: str, simple_code: str) -> ProductCatalogItem:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id, product_name, simple_code, status FROM product_catalog WHERE product_name = ?",
+                (product_name,),
+            ).fetchone()
+            if row is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO product_catalog (product_name, simple_code, status)
+                    VALUES (?, ?, 1)
+                    """,
+                    (product_name, simple_code),
+                )
+                product_id = cursor.lastrowid
+                if product_id is None:
+                    raise RuntimeError("failed to create product")
+                row = connection.execute(
+                    """
+                    SELECT id, product_name, simple_code, status
+                    FROM product_catalog
+                    WHERE id = ?
+                    """,
+                    (int(product_id),),
+                ).fetchone()
+            else:
+                connection.execute(
+                    """
+                    UPDATE product_catalog
+                    SET simple_code = ?, status = 1
+                    WHERE id = ?
+                    """,
+                    (simple_code, int(row["id"])),
+                )
+                row = connection.execute(
+                    """
+                    SELECT id, product_name, simple_code, status
+                    FROM product_catalog
+                    WHERE id = ?
+                    """,
+                    (int(row["id"]),),
+                ).fetchone()
+            if row is None:
+                raise RuntimeError("failed to upsert product")
+            return ProductCatalogItem(
+                id=int(row["id"]),
+                product_name=str(row["product_name"]),
+                simple_code=str(row["simple_code"]),
+                status=int(row["status"]),
+            )
+
+    def batch_upsert_products(self, items: list[tuple[str, str]]) -> int:
+        with get_connection(self.db_path) as connection:
+            upserted = 0
+            for product_name, simple_code in items:
+                row = connection.execute(
+                    "SELECT id FROM product_catalog WHERE product_name = ?",
+                    (product_name,),
+                ).fetchone()
+                if row is None:
+                    connection.execute(
+                        """
+                        INSERT INTO product_catalog (product_name, simple_code, status)
+                        VALUES (?, ?, 1)
+                        """,
+                        (product_name, simple_code),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE product_catalog
+                        SET simple_code = ?, status = 1
+                        WHERE id = ?
+                        """,
+                        (simple_code, int(row["id"])),
+                    )
+                upserted += 1
+            return upserted
+
+    def update_product_status(self, product_id: int, status: int) -> ProductCatalogItem | None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE product_catalog
+                SET status = ?
+                WHERE id = ?
+                """,
+                (status, product_id),
+            )
+            row = connection.execute(
+                "SELECT id, product_name, simple_code, status FROM product_catalog WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return ProductCatalogItem(
+                id=int(row["id"]),
+                product_name=str(row["product_name"]),
+                simple_code=str(row["simple_code"]),
+                status=int(row["status"]),
+            )
 
     def _score_match(self, source: str, candidate_name: str, brand: str | None, stage: str | None) -> int:
         normalized_name = self._normalize(candidate_name)

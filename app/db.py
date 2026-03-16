@@ -22,7 +22,8 @@ def init_db(db_path: str) -> None:
             CREATE TABLE IF NOT EXISTS product_catalog (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 product_name TEXT NOT NULL UNIQUE,
-                simple_code TEXT NOT NULL
+                simple_code TEXT NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1
             )
             """
         )
@@ -32,6 +33,10 @@ def init_db(db_path: str) -> None:
             ON product_catalog(simple_code)
             """
         )
+        product_columns = connection.execute("PRAGMA table_info(product_catalog)").fetchall()
+        product_column_names = {str(row["name"]) for row in product_columns}
+        if "status" not in product_column_names:
+            connection.execute("ALTER TABLE product_catalog ADD COLUMN status INTEGER DEFAULT 1")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS recipients (
@@ -88,8 +93,8 @@ def init_db(db_path: str) -> None:
         for product_name, simple_code in PRODUCT_ROWS:
             connection.execute(
                 """
-                INSERT OR IGNORE INTO product_catalog (product_name, simple_code)
-                VALUES (?, ?)
+                INSERT OR IGNORE INTO product_catalog (product_name, simple_code, status)
+                VALUES (?, ?, 1)
                 """,
                 (product_name, simple_code),
             )

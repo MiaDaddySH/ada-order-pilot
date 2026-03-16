@@ -2,10 +2,14 @@ from app.db import init_db
 from app.llm_client import LLMOrderParser, Settings
 from app.repository import OrderRepository
 from app.schemas import (
+    BatchUpsertProductsRequest,
+    CreateProductRequest,
     CreateOrderFromInputResponse,
     ParseOrderResponse,
     ParsedProduct,
     ParsedRecipient,
+    ProductCatalogItem,
+    UpdateProductStatusRequest,
 )
 
 
@@ -66,3 +70,22 @@ class OrderParseService:
             brand=product.brand,
             stage=product.stage,
         )
+
+    def list_products(self, keyword: str | None = None, include_inactive: bool = False) -> list[ProductCatalogItem]:
+        return self.repository.list_products(keyword=keyword, include_inactive=include_inactive)
+
+    def create_product(self, payload: CreateProductRequest) -> ProductCatalogItem:
+        return self.repository.create_product(
+            product_name=payload.product_name.strip(),
+            simple_code=payload.simple_code.strip(),
+        )
+
+    def batch_upsert_products(self, payload: BatchUpsertProductsRequest) -> int:
+        items = [(item.product_name.strip(), item.simple_code.strip()) for item in payload.products]
+        return self.repository.batch_upsert_products(items)
+
+    def update_product_status(self, product_id: int, payload: UpdateProductStatusRequest) -> ProductCatalogItem:
+        updated = self.repository.update_product_status(product_id=product_id, status=payload.status)
+        if updated is None:
+            raise ValueError("商品不存在")
+        return updated
