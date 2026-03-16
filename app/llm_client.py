@@ -11,7 +11,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: int = 30
     parse_mode: str = "llm_only"
     db_path: str = "data/ada_order.db"
     recipient_template_path: str = "templates/收件人模板.xlsx"
@@ -47,13 +50,8 @@ class LLMOrderParser:
         mode = self.settings.parse_mode.lower().strip()
         if mode == "fallback":
             return self._fallback_parse(text)
-        if not self.settings.llm_api_key:
-            raise RuntimeError("LLM_API_KEY 未配置，当前模式不允许规则兜底")
         try:
-            client = OpenAI(
-                api_key=self.settings.llm_api_key,
-                base_url=self.settings.llm_base_url or None,
-            )
+            client = self._get_llm_client()
             prompt = self._build_prompt(text)
             response = client.chat.completions.create(
                 model=self.settings.llm_model,
@@ -76,6 +74,27 @@ class LLMOrderParser:
             if mode == "llm_with_fallback":
                 return self._fallback_parse(text)
             raise RuntimeError("LLM 解析失败，当前模式不允许规则兜底") from exc
+
+    def _get_llm_client(self) -> OpenAI:
+        api_key = (self.settings.azure_openai_api_key or self.settings.llm_api_key or "").strip()
+        if not api_key:
+            raise ValueError("AZURE_OPENAI_API_KEY/LLM_API_KEY 未配置")
+        endpoint = (self.settings.azure_openai_endpoint or "").strip()
+        base_url = ""
+        if endpoint:
+            base_url = f"{endpoint.rstrip('/')}/openai/v1/"
+        else:
+            base_url = (self.settings.llm_base_url or "").strip()
+            if base_url and "openai.azure.com" in base_url and "/openai/v1" not in base_url:
+                base_url = f"{base_url.rstrip('/')}/openai/v1/"
+        if not base_url:
+            raise ValueError("AZURE_OPENAI_ENDPOINT/LLM_BASE_URL 未配置")
+        return OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=self.settings.llm_timeout_seconds,
+            max_retries=0,
+        )
 
     def _build_prompt(self, text: str) -> str:
         schema = {
