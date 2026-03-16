@@ -74,6 +74,96 @@
         el.textContent = text;
         el.className = isErr ? "hint status-err" : "hint status-ok";
       }
+      function splitRegion(regionText) {
+        const text = (regionText || "").trim();
+        if (!text) return { province: null, city: null, district: null };
+        let province = null;
+        let city = null;
+        let district = null;
+        const provinceMatch = text.match(/^(.+?(?:省|自治区|特别行政区|市))/);
+        let working = text;
+        if (provinceMatch) {
+          province = provinceMatch[1];
+          working = working.slice(province.length);
+        }
+        const cityMatch = working.match(/^(.+?(?:市|州|盟|地区))/);
+        if (cityMatch) {
+          city = cityMatch[1];
+          working = working.slice(city.length);
+        } else if (province && province.endsWith("市")) {
+          city = province;
+        }
+        const districtMatch = working.match(/^(.+?(?:区|县|旗|市))/);
+        if (districtMatch) district = districtMatch[1];
+        return { province, city, district };
+      }
+      function parseRecipientsFromCommaText(raw) {
+        const lines = raw.split("\n").map((x) => x.trim()).filter(Boolean);
+        return lines.map((line) => {
+          const parts = line.split(",").map((x) => x.trim());
+          const address = parts[6] || "";
+          return {
+            name: parts[0] || "",
+            phone: parts[1] || "",
+            id_card_no: parts[2] || null,
+            province: parts[3] || null,
+            city: parts[4] || null,
+            district: parts[5] || null,
+            address_detail: address,
+            raw_address: parts[7] || address,
+            postcode: parts[8] || null,
+          };
+        }).filter((x) => x.name && x.phone && x.address_detail && x.raw_address);
+      }
+      function parseRecipientsFromBlocks(raw) {
+        const lines = raw.split("\n").map((x) => x.trim()).filter(Boolean);
+        const recipients = [];
+        let i = 0;
+        while (i < lines.length) {
+          if (!/^\d+$/.test(lines[i])) {
+            i += 1;
+            continue;
+          }
+          i += 1;
+          const name = lines[i] || "";
+          const phone = lines[i + 1] || "";
+          let cursor = i + 2;
+          if (!name || !phone || !/^1[3-9]\d{9}$/.test(phone)) {
+            continue;
+          }
+          if (lines[cursor] === "中国") cursor += 1;
+          const region = lines[cursor] || "";
+          cursor += 1;
+          const addressDetail = lines[cursor] || "";
+          cursor += 1;
+          let idCardNo = null;
+          if (lines[cursor] && /^(?:\d{15}|\d{17}[\dXx])$/.test(lines[cursor])) {
+            idCardNo = lines[cursor].toUpperCase();
+            cursor += 1;
+          }
+          const regionParts = splitRegion(region);
+          if (name && phone && addressDetail) {
+            recipients.push({
+              name,
+              phone,
+              id_card_no: idCardNo,
+              province: regionParts.province,
+              city: regionParts.city,
+              district: regionParts.district,
+              address_detail: addressDetail,
+              raw_address: `${region}${addressDetail}`,
+              postcode: null,
+            });
+          }
+          i = cursor;
+        }
+        return recipients;
+      }
+      function parseBatchRecipients(raw) {
+        const commaParsed = parseRecipientsFromCommaText(raw);
+        if (commaParsed.length > 0) return commaParsed;
+        return parseRecipientsFromBlocks(raw);
+      }
       function setImageLoading(loading) {
         const previewBtn = document.getElementById("imagePreviewBtn");
         const importBtn = document.getElementById("imageImportBtn");
@@ -190,24 +280,10 @@
       };
       document.getElementById("batchImportBtn").onclick = async () => {
         try {
-          const lines = document.getElementById("batchRecipients").value.split("\n").map((x) => x.trim()).filter(Boolean);
-          const recipients = lines.map((line) => {
-            const parts = line.split(",").map((x) => x.trim());
-            const address = parts[6] || "";
-            return {
-              name: parts[0] || "",
-              phone: parts[1] || "",
-              id_card_no: parts[2] || null,
-              province: parts[3] || null,
-              city: parts[4] || null,
-              district: parts[5] || null,
-              address_detail: address,
-              raw_address: parts[7] || address,
-              postcode: parts[8] || null,
-            };
-          }).filter((x) => x.name && x.phone && x.address_detail && x.raw_address);
+          const raw = document.getElementById("batchRecipients").value;
+          const recipients = parseBatchRecipients(raw);
           if (!recipients.length) {
-            return setStatus("没有可导入的有效文本行", true);
+            return setStatus("没有可导入数据，请检查格式（逗号行或编号分行块）", true);
           }
           const res = await fetch("/api/v1/recipients/batch-upsert", {
             method: "POST",
